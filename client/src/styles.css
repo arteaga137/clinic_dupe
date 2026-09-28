@@ -1,0 +1,228 @@
+/* =====================================================================
+   styles.css — aspecto "formulario clásico de Windows" + responsive
+   =====================================================================
+   Organización:
+     1. Variables (colores) y base
+     2. Piezas comunes (botones, campos)
+     3. Agenda · 4. Historia clínica · 5. Vista previa · 6. Pacientes
+     7. Responsive (móvil)  · 8. Impresión
+   ===================================================================== */
+
+/* 1. Variables: cambiar un color aquí lo cambia en toda la app. */
+:root {
+  --bg: #dfe6ee;
+  --panel: #e9eff5;
+  --line: #9fb3c8;
+  --line-soft: #c3ced9;
+  --title: #cddcec;
+  --accent: #1f4fb8;
+  --accent-dark: #153a8a;
+  --text: #141414;
+  --yellow: #fff59a;
+  --font: Tahoma, "Segoe UI", Verdana, Geneva, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); font-family: var(--font); font-size: 12px; color: var(--text); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.scr { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.small { font-size: 11px; }
+.upper { text-transform: uppercase; }
+.muted { font-size: 11px; color: #555; }
+.mt { margin-top: 10px; }
+.empty { padding: 16px; color: #444; }
+
+/* Barra de menú */
+.menubar { display: flex; align-items: center; gap: 2px; background: #f3f3f3; border-bottom: 1px solid #b9c3cf; padding: 2px 6px; overflow-x: auto; white-space: nowrap; }
+.mi { background: none; border: 1px solid transparent; padding: 4px 10px; border-radius: 2px; }
+.mi:hover { background: #dbe8f7; border-color: #9fbde3; }
+.mi.on { background: #cfe0f5; border-color: #7ea6d9; font-weight: bold; }
+.ver { margin-left: auto; color: #4a4a4a; font-size: 11px; padding: 0 6px; }
+.win-t { background: var(--title); border-bottom: 1px solid var(--line); padding: 4px 8px; font-size: 11px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; }
+.win-t .back { text-transform: none; background: #fff; border: 1px solid #9fb0c2; padding: 2px 8px; }
+
+/* 2. Piezas comunes */
+.ro { background: #eef2f6; border: 1px solid #b9c6d3; padding: 2px 6px; min-width: 48px; min-height: 20px; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hoy { color: #d11216; background: #fff45c; font-weight: bold; padding: 1px 6px; border: 1px solid #d6c700; }
+.btn { background: #eef1f5; border: 1px solid #8fa1b4; padding: 3px 10px; border-radius: 2px; }
+.btn:hover { background: #dbe8f7; }
+.btn.pri { background: var(--accent); border-color: var(--accent-dark); color: #fff; }
+.btn.pri:hover { background: #173f95; }
+.ck { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.in { border: 1px solid #9fb0c2; background: #fff; height: 22px; padding: 1px 4px; font: inherit; width: 100%; min-width: 0; border-radius: 0; color: var(--text); }
+select.in { padding: 0 2px; }
+.in:disabled { background: #eef0f2; }
+.ta { border: 1px solid #9fb0c2; background: #fff; font: inherit; padding: 4px; width: 100%; min-height: 46px; resize: vertical; border-radius: 0; color: var(--text); }
+.ta.sm { min-height: 34px; margin-top: 4px; }
+.ta.al-on { background: #e8352e; color: #fff; font-weight: bold; }
+.fld { display: flex; align-items: center; gap: 6px; }
+.fld b { font-size: 11px; white-space: nowrap; }
+.fld.wrap { flex-wrap: wrap; }
+.grow1 { flex: 1 1 220px; min-width: 0; }
+.grow1 .ro { flex: 1; min-width: 0; }
+.tf { display: flex; flex-direction: column; gap: 3px; }
+.lrow { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px; align-items: start; margin: 6px 0; }
+.lrow > span { padding-top: 3px; }
+
+/* Paneles de formularios pequeños (nueva cita, nuevo paciente) */
+.panel { margin: 6px 8px; padding: 10px; background: #fff; border: 1px solid var(--line); }
+.panel-t { font-weight: bold; margin-bottom: 8px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 12px; }
+.panel-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+/* 3. Agenda */
+.ag-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 8px; background: #e9eef4; border-bottom: 1px solid #b9c3cf; }
+.agt-box { display: flex; align-items: center; gap: 6px; border: 1px solid #b9c6d3; padding: 3px 6px; background: #f5f7fa; }
+.agt-box .lbl { font-size: 11px; color: #333; }
+.date-ro { min-width: 220px; text-align: center; }
+.cnt { font-weight: bold; font-size: 13px; }
+.ag { background: #fff; border: 1px solid #8ea3b8; margin: 6px; overflow: auto; flex: 1; min-height: 320px; }
+.ag-row { display: grid; grid-template-columns: 56px 74px 26px 110px 110px minmax(220px, 1fr) 44px 170px 200px 70px; border-bottom: 1px solid #d9d9d9; min-width: 1060px; cursor: default; background: #fff; user-select: none; }
+.ag-row > div { padding: 3px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-right: 1px solid #e3e3e3; }
+.ag-h { background: #e9edf2; font-weight: bold; font-size: 11px; position: sticky; top: 0; z-index: 1; }
+.ag-row.y { background: var(--yellow); }
+.ag-row.c { background: #d7efcf; }
+.ag-row.sel { background: #2f54d0; color: #fff; }
+.hora { font-weight: bold; }
+.hora.b { background: #7fd6ea; color: var(--text); }
+.hora.g { background: #46b957; color: #0b1f0e; }
+.hora.r { background: #d93a31; color: #fff; }
+.hora.w { background: #fff; color: var(--text); }
+.pac { display: flex; flex-direction: column; }
+.sm-only { display: none; }
+.legend { background: var(--yellow); border-top: 1px solid #d6c700; padding: 6px 10px; font-size: 11px; line-height: 1.5; }
+.sel-bar { display: none; }
+
+/* 4. Historia clínica: dos columnas (formulario | vista previa) */
+.hc { display: flex; gap: 8px; padding: 8px; flex: 1; align-items: flex-start; }
+.col-form { flex: 1 1 58%; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+/* sticky: la vista previa se queda fija mientras bajas por el formulario */
+.col-pv { flex: 1 1 42%; min-width: 0; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 6px; height: calc(100vh - 70px); min-height: 520px; }
+.grp { border: 1px solid var(--line); border-radius: 3px; padding: 14px 10px 10px; position: relative; }
+/* Título "incrustado" en el borde, como los <fieldset> de Windows */
+.grp-t { position: absolute; top: -8px; left: 8px; background: var(--bg); padding: 0 4px; font-weight: bold; font-size: 11px; text-transform: uppercase; }
+.sec-t { text-transform: none; font-weight: normal; }
+.hdr-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: 6px; }
+.tb { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+.ib { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid transparent; padding: 3px 5px; border-radius: 2px; color: #1d3f7a; }
+.ib:hover { background: #dbe8f7; border-color: #9fbde3; }
+.ib.save { background: var(--accent); color: #fff; border-color: var(--accent-dark); padding: 3px 8px; }
+.ib.txt { font-weight: bold; font-size: 13px; }
+.ib.eu { color: #1f7a35; }
+.ib.red { color: #c0111a; }
+.sec-open { border: 1px solid var(--line); border-radius: 3px; padding: 16px 10px 10px; position: relative; }
+.seclist { display: flex; flex-direction: column; }
+.secbtn { text-align: left; background: none; border: none; border-bottom: 1px solid var(--line-soft); padding: 5px 4px; color: #2b2b2b; }
+.secbtn:hover { background: #e9f0f8; color: #1b3fa0; }
+
+/* Antecedentes */
+.ant-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 8px; }
+.ts { background: #fff45c; color: #c0111a; font-weight: bold; padding: 1px 4px; }
+.ck-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 4px 0; }
+.ck-l { min-width: 140px; }
+.ant-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin: 8px 0; }
+.al-l { display: flex; flex-direction: column; gap: 4px; }
+
+/* Refracción */
+.mk { display: inline-block; width: 18px; height: 9px; background: #4fd0d6; border: 1px solid #2a9aa0; }
+.ref-top { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.ref-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.pn { border: 1px solid #b3c2d1; padding: 6px; background: var(--panel); min-width: 0; }
+.w1 { flex: 1 1 100%; }
+.w2 { flex: 1 1 calc(50% - 8px); min-width: 240px; }
+.w3 { flex: 1 1 calc(33% - 8px); min-width: 200px; }
+.tabs { display: flex; gap: 2px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+.tabs .tt { font-size: 11px; margin: 0 6px 0 4px; }
+.tab { background: #e2e8ef; border: 1px solid #b3c2d1; padding: 3px 8px; font-size: 11px; }
+.tab.on { background: #fff; font-weight: bold; border-color: #6f8fb3; }
+.gscroll { overflow-x: auto; }
+.grow { display: grid; gap: 3px; align-items: center; margin-bottom: 3px; }
+.ghc { font-size: 10px; color: #333; text-align: center; white-space: nowrap; }
+.eye { font-size: 11px; }
+.rxbtns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+
+/* Tensión */
+.ten-boxes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.tbox { border: 1px solid #b3c2d1; padding: 6px; background: var(--panel); flex: 1 1 150px; display: flex; flex-direction: column; gap: 4px; }
+.tbox-t { font-size: 11px; }
+.eyein { display: grid; grid-template-columns: 36px 70px; gap: 4px; align-items: center; }
+.graf { border: 1px solid var(--line); background: #fff; padding: 8px; margin-top: 8px; }
+.graf-title { font-weight: bold; margin-bottom: 6px; }
+.c-od { color: var(--accent); } .c-oi { color: #b85f12; }
+.graf-r { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 6px; align-items: center; margin: 4px 0; font-size: 11px; }
+.bars { display: flex; flex-direction: column; gap: 2px; }
+.bar { height: 9px; display: flex; align-items: center; }
+.bar span { display: block; height: 9px; }
+.bar.od span { background: var(--accent); }
+.bar.oi span { background: #e07a1f; }
+.bar em { font-style: normal; margin-left: 4px; font-size: 10px; }
+
+/* 5. Vista previa (imita el documento impreso) */
+.pv-t { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fk { background: #fff200; border: 1px solid #c9b800; padding: 2px 6px; font-size: 11px; }
+.fk.on { outline: 2px solid #1b3fa0; }
+.pv-doc { background: #fff; border: 1px solid #8ea3b8; flex: 1; overflow: auto; padding: 14px 16px; font-family: Arial, Helvetica, sans-serif; font-size: 12px; min-height: 0; }
+.pv-line { margin: 6px 0; text-transform: uppercase; }
+.pv-h { font-weight: bold; margin: 12px 0 4px; }
+.pv-kv { margin: 6px 0; }
+.pv-lab { background: #a3a3a3; color: #111; padding: 0 2px; }
+.pv-val { white-space: pre-line; text-transform: uppercase; }
+.pv-date { margin: 16px 0 2px; }
+.pv-date span { background: #111; color: #fff; font-weight: bold; padding: 0 3px; }
+.pv-sub { padding-left: 28px; text-transform: uppercase; }
+.pv-plain { white-space: pre-line; }
+.pv-tbl-wrap { overflow-x: auto; margin: 6px 0; }
+.pv-cap { margin-bottom: 2px; }
+.pv-tbl { border-collapse: collapse; min-width: 480px; width: 100%; }
+.pv-tbl th, .pv-tbl td { border: 1px solid #333; padding: 1px 3px; font-size: 11px; text-align: left; font-weight: normal; height: 17px; }
+.mtabs { display: none; }
+
+/* 6. Pacientes */
+.pac-list { background: #fff; border: 1px solid #8ea3b8; margin: 6px 8px; overflow: auto; }
+.pl-row { display: grid; grid-template-columns: 80px minmax(0, 1fr) 70px 200px 90px; border-bottom: 1px solid #ddd; align-items: center; }
+.pl-row > div { padding: 6px; }
+.pl-row button { width: 100%; }
+
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1d2b3a; color: #fff; padding: 9px 16px; border-radius: 4px; z-index: 50; font-size: 13px; max-width: 90vw; }
+
+/* 7. RESPONSIVE: por debajo de 900 px de ancho (móvil / tablet vertical).
+   Una "media query" aplica estas reglas solo si se cumple la condición. */
+@media (max-width: 900px) {
+  body { font-size: 14px; }
+  /* 16px en los campos evita que el iPhone haga zoom al tocarlos */
+  .in { height: 40px; font-size: 16px; }
+  .ta { font-size: 16px; }
+  .hm { display: none; }            /* columnas/menús que sobran en móvil */
+  .sm-only { display: block; font-size: 12px; opacity: .85; }
+  .ag-row { grid-template-columns: 54px minmax(0, 1fr) 38px; min-width: 0; }
+  .ag-row > div { padding: 10px 6px; white-space: normal; }
+  .date-ro { min-width: 0; }
+  .sel-bar { display: flex; gap: 8px; align-items: center; padding: 8px; background: var(--title); position: sticky; bottom: 0; border-top: 1px solid var(--line); }
+  .sel-bar .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hc { flex-direction: column; align-items: stretch; padding: 6px; }
+  .col-pv { position: static; height: auto; min-height: 70vh; }
+  .m-hide { display: none !important; }  /* oculta formulario o vista previa según la pestaña */
+  .mtabs { display: flex; position: sticky; top: 0; z-index: 5; background: var(--title); border-bottom: 1px solid var(--line); }
+  .mtabs button { flex: 1; padding: 12px; border: none; background: none; font-weight: bold; }
+  .mtabs button.on { background: #fff; color: #1b3fa0; }
+  .ant-grid { grid-template-columns: minmax(0, 1fr); }
+  .lrow { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .secbtn { padding: 13px 6px; font-size: 15px; }
+  /* Objetivos táctiles de al menos ~44 px de alto */
+  .btn, .ib, .tab, .mi, .fk, .hoy { min-height: 44px; }
+  .w2, .w3 { flex-basis: 100%; }
+  .eyein { grid-template-columns: 44px 100px; }
+  .pl-row { grid-template-columns: 70px minmax(0, 1fr) 90px; }
+}
+
+/* 8. IMPRESIÓN: al pulsar Imprimir solo sale la vista previa. */
+@media print {
+  .menubar, .win-t, .mtabs, .col-form, .pv-t, .toast { display: none !important; }
+  .hc { padding: 0; }
+  .col-pv { position: static; height: auto; display: flex !important; }
+  .pv-doc { border: none; overflow: visible; }
+}

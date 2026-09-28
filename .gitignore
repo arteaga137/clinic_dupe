@@ -1,0 +1,21 @@
+# Dependencias (se reinstalan con `npm install`, nunca se suben a GitHub)
+node_modules/
+
+# Frontend compilado (se genera con `npm run build`)
+client/dist/
+
+# Base de datos local: tus datos de práctica no van al repositorio
+server/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Variables de entorno y secretos
+.env
+.env.*
+
+# Archivos del sistema / editores
+.DS_Store
+.vscode/
+.idea/
+*.log
