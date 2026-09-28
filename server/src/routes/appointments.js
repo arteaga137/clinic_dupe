@@ -7,7 +7,9 @@
 //
 //   GET    /api/appointments?fecha=AAAA-MM-DD   → citas de un día
 //   POST   /api/appointments                    → crear una cita
-//   PATCH  /api/appointments/:id                → cambiar el estado
+//   PATCH  /api/appointments/:id                → cambiar estado, o MOVER la cita
+//                                                 (fecha, hora, médico, nota)
+//   DELETE /api/appointments/:id                → anular una cita
 //
 // Todas las rutas son `async`: esperan (`await`) a que Postgres responda.
 // Express 5 captura automáticamente los errores de las funciones async y
@@ -41,6 +43,20 @@ function parseId(raw) {
   return id;
 }
 
+/**
+ * ¿Ese médico ya tiene una cita ese día a esa hora? Devuelve la cita que
+ * choca (o undefined). `exceptId` excluye la propia cita cuando la movemos.
+ * La comprobación se hace en el servidor, no solo en el navegador: el
+ * servidor es la única fuente de verdad (el navegador se puede saltar).
+ */
+async function findClash({ fecha, hora, medico }, exceptId = null) {
+  return queryOne(
+    `SELECT a.id, p.nombre FROM appointments a JOIN patients p ON p.hc = a.hc
+     WHERE a.fecha = $1 AND a.hora = $2 AND a.medico = $3 AND ($4::int IS NULL OR a.id <> $4)`,
+    [fecha, hora, medico, exceptId]
+  );
+}
+
 appointmentsRouter.get('/', async (req, res) => {
   const fecha = req.query.fecha || todayISO();
   if (!ISO_DATE.test(fecha)) throw new HttpError(400, 'fecha debe tener formato AAAA-MM-DD');
@@ -60,6 +76,9 @@ appointmentsRouter.post('/', async (req, res) => {
 
   const patient = await queryOne('SELECT hc FROM patients WHERE hc = $1', [b.hc]);
   if (!patient) throw new HttpError(404, `No existe el paciente con HC ${b.hc}`);
+  const clash = await findClash(b);
+  // 409 = "Conflict": la petición es correcta, pero choca con el estado actual.
+  if (clash) throw new HttpError(409, `${b.medico} ya tiene una cita a las ${b.hora} (${clash.nombre})`);
 
   // RETURNING id: Postgres nos devuelve el id que acaba de asignar.
   const { id } = await queryOne(
@@ -73,13 +92,45 @@ appointmentsRouter.post('/', async (req, res) => {
 
 appointmentsRouter.patch('/:id', async (req, res) => {
   const id = parseId(req.params.id);
-  const { status } = req.body ?? {};
-  if (!STATUSES.includes(status)) {
-    throw new HttpError(400, `status debe ser uno de: ${STATUSES.join(', ')}`);
-  }
-  const updated = await queryOne('UPDATE appointments SET status = $1 WHERE id = $2 RETURNING id', [status, id]);
-  // Si no devolvió ninguna fila, ese id no existe.
-  if (!updated) throw new HttpError(404, 'Cita no encontrada');
+  const b = req.body ?? {};
+  const current = await queryOne('SELECT * FROM appointments WHERE id = $1', [id]);
+  if (!current) throw new HttpError(404, 'Cita no encontrada');
 
+  // Partimos de la cita actual y aplicamos solo lo que venga en la petición.
+  const next = {
+    fecha: b.fecha ?? current.fecha,
+    hora: b.hora ?? current.hora,
+    medico: b.medico ?? current.medico,
+    nota: b.nota ?? current.nota,
+    status: b.status ?? current.status,
+  };
+  if (!STATUSES.includes(next.status)) throw new HttpError(400, `status debe ser uno de: ${STATUSES.join(', ')}`);
+  if (!ISO_DATE.test(next.fecha)) throw new HttpError(400, 'fecha debe tener formato AAAA-MM-DD');
+  if (!HOUR.test(next.hora)) throw new HttpError(400, 'hora debe tener formato HH:MM');
+
+  // ¿Se está MOVIENDO la cita (otro día, hora o médico)?
+  const moving = next.fecha !== current.fecha || next.hora !== current.hora || next.medico !== current.medico;
+  if (moving) {
+    if (current.status === 'atendido') throw new HttpError(409, 'No se puede mover una cita ya atendida');
+    const clash = await findClash(next, id);
+    if (clash) throw new HttpError(409, `${next.medico} ya tiene una cita el ${next.fecha} a las ${next.hora} (${clash.nombre})`);
+    // Si cambia de día, el paciente ya no está "en sala": vuelve a "citado".
+    if (next.fecha !== current.fecha && b.status === undefined) next.status = 'citado';
+  }
+
+  await query(
+    'UPDATE appointments SET fecha = $1, hora = $2, medico = $3, nota = $4, status = $5 WHERE id = $6',
+    [next.fecha, next.hora, next.medico, next.nota, next.status, id]
+  );
   res.json(await queryOne(`${SELECT_WITH_PATIENT} WHERE a.id = $1`, [id]));
+});
+
+appointmentsRouter.delete('/:id', async (req, res) => {
+  const id = parseId(req.params.id);
+  const cita = await queryOne('SELECT status FROM appointments WHERE id = $1', [id]);
+  if (!cita) throw new HttpError(404, 'Cita no encontrada');
+  // Una cita atendida tiene una visita enlazada: no se borra, es historia clínica.
+  if (cita.status === 'atendido') throw new HttpError(409, 'No se puede anular una cita ya atendida');
+  await query('DELETE FROM appointments WHERE id = $1', [id]);
+  res.status(204).end(); // 204 = "No Content": hecho, y no hay nada que devolver
 });

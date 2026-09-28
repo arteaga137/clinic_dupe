@@ -24,6 +24,9 @@ export const api = {
   getAppointments: (fecha) => request(`/appointments?fecha=${fecha}`),
   createAppointment: (cita) => request('/appointments', { method: 'POST', body: cita }),
   setAppointmentStatus: (id, status) => request(`/appointments/${id}`, { method: 'PATCH', body: { status } }),
+  // Mover = cambiar fecha, hora, médico y/o nota (PATCH solo con lo que cambia).
+  moveAppointment: (id, changes) => request(`/appointments/${id}`, { method: 'PATCH', body: changes }),
+  deleteAppointment: (id) => request(`/appointments/${id}`, { method: 'DELETE' }),
 
   // Pacientes
   searchPatients: (q = '') => request(`/patients?q=${encodeURIComponent(q)}`),

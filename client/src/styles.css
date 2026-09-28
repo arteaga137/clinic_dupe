@@ -246,3 +246,15 @@ select.in { padding: 0 2px; }
   .pv-doc { border: none; overflow: visible; }
 }
 .pv-unit { white-space: nowrap; }
+
+/* Selector de hora con huecos libres (Nueva cita / Mover cita / Nuevo paciente) */
+.slot-picker { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.slot-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.slot-list .small { margin-right: 6px; }
+.slot { background: #eef6ee; border: 1px solid #8fbf95; padding: 2px 8px; font-size: 11px; border-radius: 2px; }
+.slot:hover { background: #d7efcf; }
+.slot.on { background: var(--accent); border-color: var(--accent-dark); color: #fff; }
+.slot-warn { background: #fdecea; border: 1px solid #e4a09a; color: #8a1c14; padding: 4px 8px; font-size: 12px; }
+@media (max-width: 900px) {
+  .slot { min-height: 40px; min-width: 64px; font-size: 14px; }
+}

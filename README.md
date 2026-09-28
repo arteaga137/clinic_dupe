@@ -19,7 +19,8 @@ consulta, desde el ordenador **o desde el móvil**.
 
 ## Qué puedes hacer
 
-- **Agenda**: citas del día con colores por estado (citado, en sala, en consulta, atendido, urgencia), filtros por turno y médico, navegar por días, marcar llegada y crear citas nuevas.
+- **Agenda**: citas del día con colores por estado (citado, en sala, en consulta, atendido, urgencia), filtros por turno y médico y navegación por días. Permite marcar la llegada, **crear, mover (reprogramar) y anular citas** viendo los huecos libres de cada médico, y dar de alta un paciente nuevo con su cita en un solo paso.
+- **36 pacientes ficticios** con casos clínicos coherentes: glaucoma (crónico, pseudoexfoliativo, cierre angular, hipertensión ocular), DMAE, retinopatía diabética, oclusión venosa, membrana epirretiniana, desprendimiento de retina, coriorretinopatía serosa central, queratocono, úlcera por lentillas, conjuntivitis vírica, ojo seco, distrofia de Fuchs, pterigión, uveítis, neuritis óptica, orbitopatía tiroidea, ptosis, chalazión, ambliopía y estrabismo, miopía infantil, cirugía refractiva y estética. Las fechas se calculan respecto al día de hoy, así que la agenda tiene citas pasadas y de las próximas dos semanas.
 - **Pacientes**: buscador por nombre o nº de HC y alta de pacientes nuevos.
 - **Historia clínica**, con las mismas secciones que el programa original:
   - Antecedentes médicos (la caja de alergias se pone roja).
@@ -94,12 +95,15 @@ clinic_dupe/
 │   │   ├── app.js        ← configura Express: middlewares, rutas, errores
 │   │   ├── db.js         ← pool de conexiones a PostgreSQL, query() y withTransaction()
 │   │   ├── schema.sql    ← definición de las tablas (+ seguridad RLS para Supabase)
-│   │   ├── seed.js       ← datos ficticios de práctica
+│   │   ├── seedData.js   ← ⭐ los casos clínicos ficticios (pacientes, visitas, próximas citas)
+│   │   ├── seed.js       ← convierte los casos en filas: fechas relativas a hoy, huecos de agenda
 │   │   ├── errors.js     ← HttpError, validación y traducción de errores de Postgres
 │   │   └── routes/
 │   │       ├── appointments.js  ← /api/appointments (agenda)
 │   │       └── patients.js      ← /api/patients (pacientes y visitas)
-│   └── test/api.test.js  ← tests automáticos
+│   └── test/
+│       ├── api.test.js       ← tests de la API (necesitan TEST_DATABASE_URL)
+│       └── seedData.test.js  ← comprueba que los casos usan campos y opciones que existen
 └── client/               ← FRONTEND
     ├── vite.config.js    ← proxy /api → Express
     └── src/
@@ -147,7 +151,8 @@ clinic_dupe/
 |---|---|---|
 | GET | `/api/appointments?fecha=AAAA-MM-DD` | Citas de un día (con datos del paciente) |
 | POST | `/api/appointments` | Crear cita |
-| PATCH | `/api/appointments/:id` | Cambiar estado (`citado`, `sala`, `consulta`, `atendido`) |
+| PATCH | `/api/appointments/:id` | Cambiar estado o **mover** la cita (`fecha`, `hora`, `medico`, `nota`). 409 si choca con otra cita |
+| DELETE | `/api/appointments/:id` | Anular una cita (no si ya está atendida) |
 | GET | `/api/patients?q=texto` | Buscar pacientes |
 | POST | `/api/patients` | Alta de paciente |
 | GET | `/api/patients/:hc` | Ficha + antecedentes + visitas |
@@ -168,7 +173,9 @@ clinic_dupe/
 6. **Transacciones** al guardar una visita: o se guardan los tres cambios, o ninguno. En Postgres todas las consultas de una transacción van por la misma conexión (`withTransaction` en `db.js`).
 7. **Consultas parametrizadas** (`$1`, `$2`...) en todo el SQL, para evitar la inyección SQL.
 8. **Secretos fuera del código.** La contraseña de la base de datos solo existe en `server/.env` (ignorado por git) y en el panel de Render.
-9. **Row Level Security activado.** Supabase publica una API automática para cada tabla; activando RLS sin políticas, esa puerta queda cerrada y solo nuestro servidor puede acceder.
+9. **Las reglas las impone el servidor.** El selector de huecos libres ayuda a elegir, pero es la API la que rechaza (409) dos citas del mismo médico a la misma hora, o mover/anular una cita ya atendida: al navegador se le puede saltar, al servidor no.
+10. **Datos de práctica verificados por un test.** `seedData.test.js` comprueba que cada caso clínico usa claves y opciones de desplegable que existen en el formulario; si no, el dato no se vería y nadie se daría cuenta.
+11. **Row Level Security activado.** Supabase publica una API automática para cada tabla; activando RLS sin políticas, esa puerta queda cerrada y solo nuestro servidor puede acceder.
 
 ---
 

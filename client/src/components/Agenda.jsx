@@ -15,6 +15,8 @@ import { addDays, age, longDate, toISO } from '../lib/dates.js';
 import { MEDICOS } from '../lib/fields.js';
 import { Icon } from './ui.jsx';
 import NuevaCita from './NuevaCita.jsx';
+import MoverCita from './MoverCita.jsx';
+import NuevoPaciente from './NuevoPaciente.jsx';
 
 // Traducimos el estado de la cita a clases CSS (colores de la fila/hora).
 function rowClass(c, selected) {
@@ -33,7 +35,9 @@ export default function Agenda({ fecha, setFecha, onOpen, notify }) {
   const [selId, setSelId] = useState(null);
   const [turno, setTurno] = useState('todo'); // 'm' | 't' | 'todo'
   const [medico, setMedico] = useState('TODOS');
-  const [showNew, setShowNew] = useState(false);
+  // Qué panel está abierto: null | 'cita' | 'mover' | 'paciente'.
+  // Un solo estado en vez de tres booleanos: así nunca hay dos abiertos a la vez.
+  const [panel, setPanel] = useState(null);
   const [reload, setReload] = useState(0); // incrementarlo fuerza recargar
 
   useEffect(() => {
@@ -73,6 +77,32 @@ export default function Agenda({ fecha, setFecha, onOpen, notify }) {
       if (c.status !== 'atendido') await api.setAppointmentStatus(c.id, 'consulta');
       onOpen(c.hc, c.id, c.prestacion);
     } catch (e) { notify(e.message); }
+  }
+
+  function abrirMover() {
+    if (!sel) return notify('Selecciona la cita que quieres mover');
+    if (sel.status === 'atendido') return notify('Una cita ya atendida no se puede mover');
+    setPanel('mover');
+  }
+
+  async function anular() {
+    if (!sel) return notify('Selecciona una cita');
+    if (!window.confirm(`¿Anular la cita de ${sel.nombre} a las ${sel.hora}?`)) return;
+    try {
+      await api.deleteAppointment(sel.id);
+      setCitas((prev) => prev.filter((c) => c.id !== sel.id)); // la quitamos de la lista sin recargar
+      setSelId(null);
+      notify('Cita anulada');
+    } catch (e) { notify(e.message); }
+  }
+
+  /** Tras mover o crear una cita, saltamos a su día y la dejamos seleccionada. */
+  function irACita(cita) {
+    setPanel(null);
+    if (!cita) return setReload((n) => n + 1);
+    setSelId(cita.id);
+    if (cita.fecha === fecha) setReload((n) => n + 1);
+    else setFecha(cita.fecha); // cambiar la fecha ya dispara la recarga (useEffect)
   }
 
   async function reiniciar() {
@@ -116,17 +146,23 @@ export default function Agenda({ fecha, setFecha, onOpen, notify }) {
         </label>
         <button type="button" className="btn" onClick={marcarLlegada}>Marcar llegada</button>
         <button type="button" className="btn pri" onClick={() => abrir()}>Abrir H.Clínica</button>
-        <button type="button" className="btn" onClick={() => setShowNew(true)}>Nueva cita</button>
+        <button type="button" className="btn" onClick={() => setPanel('cita')}>Nueva cita</button>
+        <button type="button" className="btn" onClick={abrirMover}>Mover cita</button>
+        <button type="button" className="btn" onClick={anular}>Anular cita</button>
+        <button type="button" className="btn" onClick={() => setPanel('paciente')}>Nuevo paciente</button>
         <button type="button" className="btn" onClick={reiniciar}>Reiniciar práctica</button>
       </div>
 
-      {showNew && (
-        <NuevaCita
-          fecha={fecha}
-          notify={notify}
-          onClose={() => setShowNew(false)}
-          onCreated={() => { setShowNew(false); setReload((n) => n + 1); }}
-        />
+      {panel === 'cita' && (
+        <NuevaCita fecha={fecha} notify={notify} onClose={() => setPanel(null)} onCreated={irACita} />
+      )}
+      {panel === 'mover' && sel && (
+        // key: si cambias de cita seleccionada, el formulario se reinicia con sus datos
+        <MoverCita key={sel.id} cita={sel} notify={notify} onClose={() => setPanel(null)} onMoved={irACita} />
+      )}
+      {panel === 'paciente' && (
+        <NuevoPaciente fecha={fecha} conCita notify={notify} onClose={() => setPanel(null)}
+          onCreated={(paciente, cita) => irACita(cita)} />
       )}
 
       <div className="ag" role="table" aria-label="Agenda del día">
@@ -162,6 +198,7 @@ export default function Agenda({ fecha, setFecha, onOpen, notify }) {
         <div className="sel-bar">
           <span className="nm">{sel.nombre} · {sel.hora}</span>
           <button type="button" className="btn" onClick={marcarLlegada}>Llegada</button>
+          <button type="button" className="btn" onClick={abrirMover}>Mover</button>
           <button type="button" className="btn pri" onClick={() => abrir()}>Abrir</button>
         </div>
       )}

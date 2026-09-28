@@ -22,6 +22,14 @@ export const PROFESIONES = ['', 'Empleado/a', 'Autónomo/a', 'Estudiante', 'Jubi
 export const TONOMETROS = ['', 'Goldmann', 'Aire (NCT)', 'iCare', 'Perkins', 'Tono-Pen'];
 export const OPTICAS = ['', 'Óptica Centro', 'Óptica Norte', 'Óptica Sur', 'Otra óptica'];
 export const SOCIEDADES = ['PRIVADO', 'SANITAS, S.A.', 'DKV SEGUROS, S.A.', 'SEGUR CAIXA ADESLAS', 'ASISA, S.A.', 'MAPFRE ESPAÑA, CIA.'];
+// Huecos de la agenda: mañana 09:00–13:40 y tarde 16:00–18:40, cada 20 min
+// (el mismo horario que usa el servidor al generar los datos de práctica).
+export const AGENDA_SLOTS = [];
+for (const [from, to] of [[9 * 60, 14 * 60], [16 * 60, 19 * 60]]) {
+  for (let m = from; m < to; m += 20) {
+    AGENDA_SLOTS.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+  }
+}
 export const PRESTACIONES = ['PRIMERA CONSULTA', 'REVISIÓN', 'CONSULTA URGENCIAS', 'REVISIÓN POSTOPERATORIA', 'LÁSER ARGÓN', 'PREVIO CATARATA', 'PREVIO REFRACTIVA', 'NOTA MÉDICA'];
 
 // ---------- secciones del acordeón (en el orden del programa real) ----------

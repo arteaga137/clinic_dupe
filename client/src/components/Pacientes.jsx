@@ -2,13 +2,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { age } from '../lib/dates.js';
-import { SOCIEDADES } from '../lib/fields.js';
+import NuevoPaciente from './NuevoPaciente.jsx';
 
 export default function Pacientes({ onOpen, notify }) {
   const [q, setQ] = useState('');
   const [lista, setLista] = useState([]);
   const [showNew, setShowNew] = useState(false);
-  const [nuevo, setNuevo] = useState({ nombre: '', nacimiento: '', sociedad: SOCIEDADES[0] });
 
   // "Debounce": esperamos 250 ms desde la última tecla antes de buscar, para
   // no lanzar una petición al servidor por cada letra escrita.
@@ -18,17 +17,6 @@ export default function Pacientes({ onOpen, notify }) {
     }, 250);
     return () => clearTimeout(t); // si escribes otra letra, se cancela la anterior
   }, [q, notify]);
-
-  async function crear(e) {
-    e.preventDefault();
-    try {
-      const p = await api.createPatient(nuevo);
-      notify(`Paciente creado con HC ${p.hc}`);
-      setShowNew(false);
-      setNuevo({ nombre: '', nacimiento: '', sociedad: SOCIEDADES[0] });
-      onOpen(p.hc);
-    } catch (err) { notify(err.message); }
-  }
 
   return (
     <div className="scr">
@@ -42,26 +30,8 @@ export default function Pacientes({ onOpen, notify }) {
       </div>
 
       {showNew && (
-        <form className="panel" onSubmit={crear}>
-          <div className="panel-t">Alta de paciente</div>
-          <div className="form-grid">
-            <label className="tf"><span>Apellidos, Nombre</span>
-              <input className="in" required value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
-            </label>
-            <label className="tf"><span>Fecha de nacimiento</span>
-              <input className="in" type="date" required value={nuevo.nacimiento} onChange={(e) => setNuevo({ ...nuevo, nacimiento: e.target.value })} />
-            </label>
-            <label className="tf"><span>Sociedad</span>
-              <select className="in" value={nuevo.sociedad} onChange={(e) => setNuevo({ ...nuevo, sociedad: e.target.value })}>
-                {SOCIEDADES.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="panel-actions">
-            <button type="button" className="btn" onClick={() => setShowNew(false)}>Cancelar</button>
-            <button type="submit" className="btn pri">Crear y abrir historia</button>
-          </div>
-        </form>
+        <NuevoPaciente notify={notify} onClose={() => setShowNew(false)}
+          onCreated={(p) => { setShowNew(false); onOpen(p.hc); }} />
       )}
 
       <div className="pac-list">

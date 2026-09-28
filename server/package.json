@@ -1,7 +1,7 @@
 {
   "name": "clinic-dupe-server",
   "version": "1.0.0",
-  "description": "API REST (Express + SQLite) del simulador de historia clínica",
+  "description": "API REST (Express + PostgreSQL) del simulador de historia clínica",
   "private": true,
   "type": "module",
   "main": "src/index.js",
