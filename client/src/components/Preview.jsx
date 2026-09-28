@@ -3,7 +3,7 @@ function Block({ b }) {
   switch (b.type) {
     case 'head': return <div className="pv-line">{b.text}</div>;
     case 'h': return <div className="pv-h">{b.text}</div>;
-    case 'kv': return <div className="pv-kv"><span className="pv-lab">{b.label}</span> <span className="pv-val">{b.text}</span></div>;
+    case 'kv': return <div className="pv-kv"><span className="pv-lab">{b.label}</span> <span className="pv-val">{b.text}</span>{b.unit && <span className="pv-unit"> {b.unit}</span>}</div>;
     case 'date': return <div className="pv-date"><span>{b.text}</span></div>;
     case 'sub': return <div className="pv-sub">{b.text}</div>;
     case 'plain': return <div className="pv-plain">{b.text}</div>;
@@ -11,7 +11,7 @@ function Block({ b }) {
       return (
         <div className="pv-tbl-wrap">
           <div className="pv-cap">{b.label}</div>
-          <table className="pv-tbl">
+          <table className={b.narrow ? 'pv-tbl narrow' : 'pv-tbl'}>
             <thead><tr>{b.header.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
             <tbody>
               {b.rows.map((row, r) => (

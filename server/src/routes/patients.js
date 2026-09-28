@@ -4,6 +4,7 @@
 //   GET  /api/patients?q=texto            → buscar por nombre o nº de HC
 //   POST /api/patients                    → alta de paciente nuevo
 //   GET  /api/patients/:hc                → ficha + antecedentes + visitas
+//   PUT  /api/patients/:hc                → editar nombre, nacimiento, sociedad, mutua
 //   PUT  /api/patients/:hc/antecedentes   → guardar antecedentes médicos
 //   POST /api/patients/:hc/visits         → guardar una consulta
 // =====================================================================
@@ -75,6 +76,29 @@ patientsRouter.get('/:hc', (req, res) => {
   res.json({ ...patient, visits: getVisits(patient.hc) });
 });
 
+// Editar los datos generales. El nº de HC NO se puede cambiar: es la clave
+// primaria y lo usan las citas y visitas para enlazarse con el paciente.
+// La EDAD tampoco se guarda: se calcula a partir de la fecha de nacimiento
+// (si la guardáramos, dejaría de ser correcta en el siguiente cumpleaños).
+patientsRouter.put('/:hc', (req, res) => {
+  const current = getPatientOr404(req.params.hc);
+  const b = req.body ?? {};
+  // Si un campo no viene en la petición, se conserva el valor actual.
+  const next = {
+    nombre: (b.nombre ?? current.nombre).trim(),
+    nacimiento: b.nacimiento ?? current.nacimiento,
+    sociedad: b.sociedad ?? current.sociedad,
+    mutua: b.mutua ?? current.mutua,
+  };
+  if (!next.nombre) throw new HttpError(400, 'El nombre no puede estar vacío');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next.nacimiento)) throw new HttpError(400, 'nacimiento debe ser AAAA-MM-DD');
+  if (next.nacimiento > todayISO()) throw new HttpError(400, 'La fecha de nacimiento no puede ser futura');
+
+  db.prepare('UPDATE patients SET nombre = @nombre, nacimiento = @nacimiento, sociedad = @sociedad, mutua = @mutua WHERE hc = @hc')
+    .run({ ...next, hc: current.hc });
+  res.json(getPatientOr404(current.hc));
+});
+
 patientsRouter.put('/:hc/antecedentes', (req, res) => {
   getPatientOr404(req.params.hc);
   assertPlainObject(req.body, 'El cuerpo');
@@ -92,6 +116,10 @@ patientsRouter.post('/:hc/visits', (req, res) => {
   getPatientOr404(hc);
 
   const { data = {}, antecedentes, appointmentId = null, profesional = '', prestacion = '' } = req.body ?? {};
+  // La fecha de la visita es opcional (por defecto, hoy). Permite registrar
+  // una consulta de otro día, como el campo FECHA del programa real.
+  const fecha = req.body?.fecha || todayISO();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new HttpError(400, 'fecha debe ser AAAA-MM-DD');
   assertPlainObject(data, 'data');
   if (antecedentes !== undefined) assertPlainObject(antecedentes, 'antecedentes');
   if (Object.keys(data).length === 0 && antecedentes === undefined) {
@@ -109,7 +137,7 @@ patientsRouter.post('/:hc/visits', (req, res) => {
           `INSERT INTO visits (hc, appointment_id, fecha, profesional, prestacion, data)
            VALUES (?, ?, ?, ?, ?, ?)`
         )
-        .run(hc, appointmentId, todayISO(), profesional, prestacion, JSON.stringify(data)).lastInsertRowid;
+        .run(hc, appointmentId, fecha, profesional, prestacion, JSON.stringify(data)).lastInsertRowid;
 
       if (appointmentId) {
         // Solo marcamos la cita si pertenece a ESTE paciente (evita errores).

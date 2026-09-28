@@ -26,7 +26,8 @@ consulta, desde el ordenador **o desde el móvil**.
   - Motivo de consulta.
   - Refracción: AV sin corrección, auto, ciclo, queratometría, gafas 1/2/3, manifiesta, receta, ciclo/retinoscopia/quirúrgica/CAP.
   - Tensión ocular y paquimetría, con gráfica de evolución de la PIO.
-  - Motilidad, BMC anterior, fondo de ojo, diagnóstico y tratamiento, OCT…
+  - Motilidad ocular, BMC anterior, fondo de ojo, diagnóstico y TTO, OCT, angiografía, campimetría, topografía, ecografía, biometría, recuento endotelial, órbita/párpados, oculoplastia y estética. Cada sección tiene sus propios campos (cover test, Van Herick, excavación E/P, CFNR, DM/DSM/VFI, longitud axial, potencia de LIO…), con tablas O.D./O.I. y listas de sugerencias.
+- **Datos del paciente editables**: nombre, fecha de nacimiento (la edad se recalcula sola), sociedad y mutua. También se puede cambiar la fecha de la visita.
 - **Vista previa** en vivo, con **F2** (todo el historial) y **F3** (última visita).
 - **Guardar**: la visita queda en el historial y la cita se marca como atendida.
 - **Reiniciar práctica**: vuelve a los datos iniciales.
@@ -99,6 +100,7 @@ clinic_dupe/
         ├── styles.css    ← estilo "Windows clásico" + responsive + impresión
         ├── lib/
         │   ├── fields.js   ← ⭐ la estructura de la historia descrita como datos
+        │   ├── sectionForms.js ← ⭐ campos de las 14 secciones de exploración y pruebas
         │   ├── useForm.js  ← hook para formularios grandes
         │   ├── preview.js  ← genera la vista previa (función pura)
         │   └── dates.js    ← utilidades de fechas
@@ -139,20 +141,22 @@ clinic_dupe/
 | GET | `/api/patients?q=texto` | Buscar pacientes |
 | POST | `/api/patients` | Alta de paciente |
 | GET | `/api/patients/:hc` | Ficha + antecedentes + visitas |
+| PUT | `/api/patients/:hc` | Editar nombre, nacimiento, sociedad y mutua |
 | PUT | `/api/patients/:hc/antecedentes` | Guardar antecedentes |
-| POST | `/api/patients/:hc/visits` | Guardar una consulta |
+| POST | `/api/patients/:hc/visits` | Guardar una consulta (acepta `fecha` opcional) |
 | POST | `/api/reset` | Recargar datos de práctica |
 
 ---
 
 ## Decisiones de diseño (y por qué)
 
-1. **Formularios descritos como datos** (`client/src/lib/fields.js`). La historia tiene unos 300 campos. En vez de escribir 300 `<input>`, cada tabla se describe en un objeto (`GRIDS`) y un solo componente (`RxGrid`) la dibuja. Para añadir una columna basta con añadir una línea.
-2. **Campos clínicos en JSON dentro de SQLite.** Lo que hay que filtrar u ordenar (fecha, hora, estado, nombre) tiene su propia columna. Los datos del formulario se guardan como JSON en una columna de texto. Es flexible, a cambio de que sea más difícil consultarlos con SQL. Lo explica `schema.sql`.
-3. **Un solo estado de formulario** en `HistoriaClinica.jsx` ("lifting state up"). Las secciones solo leen y escriben su parte, y la vista previa ve siempre todos los datos.
-4. **La vista previa es una función pura** (`preview.js`): recibe datos y devuelve bloques, sin tocar React. Así es fácil de entender y de probar.
-5. **Transacciones** al guardar una visita: o se guardan los tres cambios, o ninguno.
-6. **Consultas parametrizadas** (`?`) en todo el SQL, para evitar la inyección SQL.
+1. **Formularios descritos como datos** (`fields.js` y `sectionForms.js`). La historia tiene más de 500 campos. En vez de escribir cada `<input>`, las tablas de refracción se describen en `GRIDS` y las demás secciones en `SECTION_FORMS`. Dos componentes (`RxGrid` y `StructuredSection`) las dibujan. Para añadir un campo basta con añadir una línea, y aparece también en la vista previa y en la base de datos.
+2. **La edad no se guarda, se calcula** a partir de la fecha de nacimiento. Si se guardara, dejaría de ser correcta en el siguiente cumpleaños. El nº de HC tampoco se puede editar: es la clave que enlaza citas y visitas.
+3. **Campos clínicos en JSON dentro de SQLite.** Lo que hay que filtrar u ordenar (fecha, hora, estado, nombre) tiene su propia columna. Los datos del formulario se guardan como JSON en una columna de texto. Es flexible, a cambio de que sea más difícil consultarlos con SQL. Lo explica `schema.sql`.
+4. **Un solo estado de formulario** en `HistoriaClinica.jsx` ("lifting state up"). Las secciones solo leen y escriben su parte, y la vista previa ve siempre todos los datos.
+5. **La vista previa es una función pura** (`preview.js`): recibe datos y devuelve bloques, sin tocar React. Así es fácil de entender y de probar.
+6. **Transacciones** al guardar una visita: o se guardan los tres cambios, o ninguno.
+7. **Consultas parametrizadas** (`?`) en todo el SQL, para evitar la inyección SQL.
 
 ## Ideas para seguir aprendiendo
 

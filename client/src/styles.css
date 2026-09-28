@@ -145,6 +145,21 @@ select.in { padding: 0 2px; }
 .eye { font-size: 11px; }
 .rxbtns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
+/* Secciones estructuradas (Fondo de ojo, OCT, Campimetría...) */
+.sgroup { border: 1px solid #b3c2d1; background: var(--panel); padding: 6px 8px 8px; margin: 0 0 8px; min-width: 0; }
+.sgroup legend { font-size: 11px; padding: 0 4px; display: flex; align-items: center; gap: 6px; }
+.sgroup legend::before { content: ''; display: inline-block; width: 18px; height: 9px; background: #4fd0d6; border: 1px solid #2a9aa0; }
+/* auto-fill + minmax: tantas columnas de 200 px como quepan (responsive sin media query) */
+.sfields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 12px; }
+.sfields .full { grid-column: 1 / -1; }  /* 1 / -1 = de la primera a la última columna */
+.sgroup .ck-row { margin-top: 8px; }
+.eyes-grid { display: grid; grid-template-columns: minmax(150px, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 3px 6px; align-items: center; }
+.eg-h { font-size: 11px; font-weight: bold; text-align: center; }
+.eg-l { font-size: 11px; }
+.with-unit { display: flex; align-items: center; gap: 4px; }
+.unit { font-size: 11px; color: #444; white-space: nowrap; }
+.hdr-in { font-weight: bold; text-transform: uppercase; }
+
 /* Tensión */
 .ten-boxes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .tbox { border: 1px solid #b3c2d1; padding: 6px; background: var(--panel); flex: 1 1 150px; display: flex; flex-direction: column; gap: 4px; }
@@ -179,6 +194,8 @@ select.in { padding: 0 2px; }
 .pv-cap { margin-bottom: 2px; }
 .pv-tbl { border-collapse: collapse; min-width: 480px; width: 100%; }
 .pv-tbl th, .pv-tbl td { border: 1px solid #333; padding: 1px 3px; font-size: 11px; text-align: left; font-weight: normal; height: 17px; }
+.pv-tbl.narrow { min-width: 0; max-width: 560px; }
+.pv-tbl.narrow td:first-child { width: 45%; }
 .mtabs { display: none; }
 
 /* 6. Pacientes */
@@ -217,6 +234,8 @@ select.in { padding: 0 2px; }
   .w2, .w3 { flex-basis: 100%; }
   .eyein { grid-template-columns: 44px 100px; }
   .pl-row { grid-template-columns: 70px minmax(0, 1fr) 90px; }
+  .eyes-grid { grid-template-columns: minmax(96px, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .eg-l { font-size: 12px; }
 }
 
 /* 8. IMPRESIÓN: al pulsar Imprimir solo sale la vista previa. */
@@ -226,3 +245,4 @@ select.in { padding: 0 2px; }
   .col-pv { position: static; height: auto; display: flex !important; }
   .pv-doc { border: none; overflow: visible; }
 }
+.pv-unit { white-space: nowrap; }

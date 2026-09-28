@@ -11,11 +11,13 @@
 // derecho, esfera). El formulario entero es un objeto { clave: valor }.
 // =====================================================================
 
+import { SECTION_FORMS, sectionKeys } from './sectionForms.js';
+
 // ---------- listas de opciones de los desplegables ----------
 export const AV_OPTIONS = ['', '0.05', '0.1', '0.16', '0.2', '0.25', '0.3', '0.4', '0.5', '0.6', '0.7', '0.8', '0.9', '1.0', '1.2', 'CD', 'MM', 'PL', 'NPL'];
 export const JAEGER_OPTIONS = ['', 'J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7', 'J8'];
 export const MEDICOS = ['DRA. SANZ', 'DR. MOLINA', 'OPTOMETRÍA'];
-export const PROFESIONALES = ['Sanz Molina, Laura', 'Molina Pardo, Andrés', 'Ortega Gil, Pablo', 'Ruiz Nieto, Elena'];
+export const PROFESIONALES = ['Rodrigues de Ortiz, Aaron Alessandro', 'Sanz Molina, Laura','Molina Pardo, Andrés', 'Ortega Gil, Pablo', 'Ruiz Nieto, Elena'];
 export const PROFESIONES = ['', 'Empleado/a', 'Autónomo/a', 'Estudiante', 'Jubilado/a', 'Desempleado/a', 'Otra'];
 export const TONOMETROS = ['', 'Goldmann', 'Aire (NCT)', 'iCare', 'Perkins', 'Tono-Pen'];
 export const OPTICAS = ['', 'Óptica Centro', 'Óptica Norte', 'Óptica Sur', 'Otra óptica'];
@@ -78,31 +80,29 @@ export const EYE_LABEL = { od: 'O.D.', oi: 'O.I.', ao: 'A.O.' };
 /** Clave de una celda: gridKey('man', 'od', 'esf') → 'man_od_esf'. */
 export const gridKey = (g, eye, col) => `${g}_${eye}_${col}`;
 
-// ---------- secciones "genéricas" (solo textos por ojo) ----------
-const byEye = (id) => [{ k: `${id}_od`, l: 'O.D.' }, { k: `${id}_oi`, l: 'O.I.' }, { k: `${id}_obs`, l: 'Comentarios' }];
-export const GENERIC = {
-  mo: [{ k: 'mo_txt', l: 'Motilidad ocular' }, { k: 'mo_obs', l: 'Comentarios' }],
-  bmc: byEye('bmc'), fo: byEye('fo'),
-  dx: [{ k: 'dx_dx', l: 'Diagnóstico' }, { k: 'dx_tto', l: 'Tratamiento' }, { k: 'dx_rev', l: 'Próxima revisión' }],
-  oct: byEye('oct'), ang: byEye('ang'), camp: byEye('camp'), topo: byEye('topo'), eco: byEye('eco'),
-  bio: byEye('bio'), rec: byEye('rec'), orb: byEye('orb'), ocp: byEye('ocp'), est: byEye('est'),
-};
+// ---------- secciones de exploración y pruebas ----------
+// Sus campos se describen en sectionForms.js. Aquí solo reunimos las claves.
+export { SECTION_FORMS } from './sectionForms.js';
+const STRUCTURED = Object.keys(SECTION_FORMS).map(sectionKeys);
 
 // ---------- listas de claves ----------
 // Antecedentes: pertenecen al PACIENTE (se mantienen entre visitas).
 export const ANT_KEYS = ['profesion', 'validar', 'validarTs', 'diabetes', 'hta', 'anticoag', 'vih', 'tbc', 'vhb', 'vhc', 'ap', 'aof', 'afam', 'aqx', 'alergias', 'alNoC', 'alAct', 'med', 'medsis', 'diag', 'opera'];
 export const TEN_KEYS = ['ten_ton', 'ten1_od', 'ten1_oi', 'ten1_obs', 'ten2_od', 'ten2_oi', 'ten2_obs', 'dia_od', 'dia_oi', 'dia_hora', 'paq_od', 'paq_oi', 'paq_obs', 'paq_fecha', 'gonio'];
-const BOOL_KEYS = new Set(['validar', 'diabetes', 'hta', 'anticoag', 'vih', 'tbc', 'vhb', 'vhc', 'alNoC', 'alAct', 'derivado']);
+const BOOL_KEYS = new Set([
+  'validar', 'diabetes', 'hta', 'anticoag', 'vih', 'tbc', 'vhb', 'vhc', 'alNoC', 'alAct', 'derivado',
+  ...STRUCTURED.flatMap((s) => s.bools), // casillas de las secciones (p. ej. "Consentimiento firmado")
+]);
 
 // flatMap = map + aplanar: convierte listas de listas en una sola lista.
 const GRID_KEYS = GRID_ORDER.flatMap((g) => [
   ...eyesOf(g).flatMap((e) => GRIDS[g].cols.map((c) => gridKey(g, e, c.id))),
   ...(GRIDS[g].obs ? [`${g}_obs`] : []),
 ]);
-const GENERIC_KEYS = Object.values(GENERIC).flatMap((fields) => fields.map((f) => f.k));
+const SECTION_KEYS = STRUCTURED.flatMap((s) => s.keys);
 
 // Consulta: pertenecen a la VISITA de hoy (se vacían al guardar).
-export const CONSULT_KEYS = ['mot', 'obs', 'derivado', 'derivadoA', 'ref_por', 'obsint', ...TEN_KEYS, ...GRID_KEYS, ...GENERIC_KEYS];
+export const CONSULT_KEYS = ['mot', 'obs', 'derivado', 'derivadoA', 'ref_por', 'obsint', ...TEN_KEYS, ...GRID_KEYS, ...SECTION_KEYS];
 
 /** ¿Tiene contenido este valor? ('' , false, null y undefined → no). */
 export const hasValue = (v) => v !== '' && v !== false && v !== null && v !== undefined;

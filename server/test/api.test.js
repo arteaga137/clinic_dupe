@@ -86,6 +86,28 @@ test('alta de paciente asigna el siguiente nº de HC', async () => {
   assert.equal((await res.json()).hc, '700113');
 });
 
+test('editar los datos generales del paciente (y validar)', async () => {
+  const ok = await fetch(`${base}/patients/700102`, json('PUT', { nombre: 'Benítez Soler, Andrés Javier', mutua: 'MUFACE' }));
+  assert.equal(ok.status, 200);
+  const p = await ok.json();
+  assert.equal(p.nombre, 'Benítez Soler, Andrés Javier');
+  assert.equal(p.mutua, 'MUFACE');
+  assert.equal(p.sociedad, 'PRIVADO', 'lo que no se envía se conserva');
+
+  const vacio = await fetch(`${base}/patients/700102`, json('PUT', { nombre: '   ' }));
+  assert.equal(vacio.status, 400);
+  const futuro = await fetch(`${base}/patients/700102`, json('PUT', { nacimiento: '2999-01-01' }));
+  assert.equal(futuro.status, 400);
+});
+
+test('una visita puede registrarse con otra fecha', async () => {
+  const res = await fetch(`${base}/patients/700110/visits`, json('POST', { fecha: '2026-01-15', data: { mot: 'Visita atrasada' } }));
+  const { patient } = await res.json();
+  assert.equal(patient.visits[0].fecha, '2026-01-15');
+  const bad = await fetch(`${base}/patients/700110/visits`, json('POST', { fecha: '15/01/2026', data: { mot: 'x' } }));
+  assert.equal(bad.status, 400);
+});
+
 test('reiniciar vuelve a los datos iniciales', async () => {
   await fetch(`${base}/reset`, { method: 'POST' });
   const p = await (await fetch(`${base}/patients/700101`)).json();

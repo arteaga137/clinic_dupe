@@ -29,6 +29,7 @@ export const api = {
   searchPatients: (q = '') => request(`/patients?q=${encodeURIComponent(q)}`),
   createPatient: (p) => request('/patients', { method: 'POST', body: p }),
   getPatient: (hc) => request(`/patients/${hc}`),
+  updatePatient: (hc, datos) => request(`/patients/${hc}`, { method: 'PUT', body: datos }),
   saveAntecedentes: (hc, antecedentes) => request(`/patients/${hc}/antecedentes`, { method: 'PUT', body: antecedentes }),
   saveVisit: (hc, visit) => request(`/patients/${hc}/visits`, { method: 'POST', body: visit }),
 

@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useForm } from '../lib/useForm.js';
-import { emptyForm, pick, ANT_KEYS, CONSULT_KEYS, SECTIONS, GENERIC, MEDICOS, PROFESIONALES } from '../lib/fields.js';
+import { emptyForm, pick, ANT_KEYS, CONSULT_KEYS, SECTIONS, SECTION_FORMS, MEDICOS, PROFESIONALES, SOCIEDADES } from '../lib/fields.js';
 import { age, isoToDMY, toISO } from '../lib/dates.js';
 import { buildPreview } from '../lib/preview.js';
 import { Icon } from './ui.jsx';
@@ -24,7 +24,10 @@ import Antecedentes from './sections/Antecedentes.jsx';
 import Motivo from './sections/Motivo.jsx';
 import Refraccion from './sections/Refraccion.jsx';
 import Tension from './sections/Tension.jsx';
-import GenericSection from './sections/GenericSection.jsx';
+import StructuredSection from './sections/StructuredSection.jsx';
+
+// Campos de la ficha del paciente que se pueden editar desde la cabecera.
+const DATOS_KEYS = ['nombre', 'nacimiento', 'sociedad', 'mutua'];
 
 export default function HistoriaClinica({ hc, appointmentId, prestacion, notify, onBack, onDirtyChange }) {
   const [patient, setPatient] = useState(null);
@@ -35,6 +38,11 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
   const [medico, setMedico] = useState(MEDICOS[0]);
   const [prof, setProf] = useState(PROFESIONALES[0]);
   const [saving, setSaving] = useState(false);
+  const [fechaVisita, setFechaVisita] = useState(toISO()); // FECHA de la consulta
+  // Copia EDITABLE de los datos generales. Mientras escribes se modifica esta
+  // copia; `patient` conserva lo guardado, y comparando ambas sabemos si
+  // hay cambios pendientes.
+  const [datos, setDatos] = useState(null);
   const fm = useForm(emptyForm());
   const { form, setForm } = fm;
 
@@ -43,19 +51,25 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
     api.getPatient(hc)
       .then((p) => {
         setPatient(p);
+        setDatos(pick(p, DATOS_KEYS));
         // Rellenamos el formulario: valores vacíos + antecedentes guardados.
         setForm({ ...emptyForm(), ...p.antecedentes });
       })
       .catch((e) => setError(e.message));
   }, [hc, setForm]);
 
+  // Devuelve un manejador para un campo de `datos`: setDato('nombre') → (e) => ...
+  // Es una "función que devuelve una función" (se llama currying).
+  const setDato = (key) => (e) => setDatos((prev) => ({ ...prev, [key]: e.target.value }));
+
   // "draft" = campos de la consulta de hoy que tienen algo escrito.
   // useMemo recalcula solo cuando cambia `form` (son ~300 claves).
   const draft = useMemo(() => pick(form, CONSULT_KEYS, true), [form]);
   const dirty = Object.keys(draft).length > 0;
+  const datosDirty = Boolean(patient && datos && DATOS_KEYS.some((k) => datos[k] !== patient[k]));
 
   // Avisamos a App si hay cambios sin guardar (para el aviso al salir).
-  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { onDirtyChange(dirty || datosDirty); }, [dirty, datosDirty, onDirtyChange]);
 
   // Atajos de teclado como en el programa real: F2 = todo el historial,
   // F3 = última visita. Añadimos el "listener" al montar y lo quitamos al
@@ -70,28 +84,38 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
   }, []);
 
   const blocks = useMemo(() => {
-    if (!patient) return [];
+    if (!patient || !datos) return [];
     return buildPreview({
-      patient: { ...patient, nombre: patient.nombre.toUpperCase() },
+      // Los datos editados se ven en la vista previa al momento.
+      patient: { ...patient, ...datos, nombre: datos.nombre.toUpperCase() },
       form,
       draft,
-      draftMeta: { fechaLabel: `${isoToDMY(toISO(), '-')} · en curso (sin guardar)`, profesional: prof, prestacion },
+      draftMeta: { fechaLabel: `${isoToDMY(fechaVisita, '-')} · en curso (sin guardar)`, profesional: prof, prestacion },
       mode: pvMode,
     });
-  }, [patient, form, draft, prof, prestacion, pvMode]);
+  }, [patient, datos, form, draft, prof, prestacion, pvMode, fechaVisita]);
 
   if (error) return <div className="scr"><div className="empty">{error}</div></div>;
-  if (!patient) return <div className="scr"><div className="empty">Cargando historia…</div></div>;
+  if (!patient || !datos) return <div className="scr"><div className="empty">Cargando historia…</div></div>;
 
   async function guardar() {
+    if (!datos.nombre.trim()) return notify('El nombre no puede estar vacío');
     const antecedentes = pick(form, ANT_KEYS);
     setSaving(true);
     try {
+      // 1) Datos generales, solo si han cambiado.
+      if (datosDirty) {
+        const updated = await api.updatePatient(hc, datos);
+        // Conservamos `visits` (el PUT no las devuelve) y actualizamos el resto.
+        setPatient((prev) => ({ ...prev, ...updated }));
+        setDatos(pick(updated, DATOS_KEYS));
+      }
+      // 2) Antecedentes + consulta.
       if (!dirty) {
         await api.saveAntecedentes(hc, antecedentes);
-        notify('Antecedentes guardados');
+        notify(datosDirty ? 'Datos del paciente guardados' : 'Antecedentes guardados');
       } else {
-        const res = await api.saveVisit(hc, { appointmentId, profesional: prof, prestacion, data: draft, antecedentes });
+        const res = await api.saveVisit(hc, { appointmentId, fecha: fechaVisita, profesional: prof, prestacion, data: draft, antecedentes });
         setPatient(res.patient);
         // Vaciamos la consulta pero conservamos los antecedentes.
         setForm({ ...emptyForm(), ...antecedentes });
@@ -133,14 +157,32 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
         <div className={mview === 'pv' ? 'col-form m-hide' : 'col-form'}>
           <div className="grp">
             <div className="grp-t">Datos generales del paciente</div>
+            {/* Datos editables. El HC es de solo lectura (es la clave que
+                enlaza citas y visitas) y la EDAD se calcula sola a partir de
+                la fecha de nacimiento: al cambiarla, la edad se actualiza. */}
             <div className="hdr-row">
-              <div className="fld"><b>HC</b><span className="ro">{patient.hc}</span></div>
-              <div className="fld grow1"><b>NOMBRE</b><span className="ro">{patient.nombre.toUpperCase()}</span></div>
-              <div className="fld"><b>EDAD</b><span className="ro">{age(patient.nacimiento)} años</span></div>
+              <div className="fld"><b>HC</b><span className="ro" title="El nº de historia no se puede modificar">{patient.hc}</span></div>
+              <label className="fld grow1"><b>NOMBRE</b>
+                <input className="in hdr-in" value={datos.nombre} onChange={setDato('nombre')} />
+              </label>
             </div>
             <div className="hdr-row">
-              <div className="fld"><b>SOCIEDAD</b><span className="ro">{patient.sociedad}</span></div>
-              <div className="fld"><b>MUTUA</b><span className="ro" style={{ minWidth: 90 }}>{patient.mutua}</span></div>
+              <label className="fld"><b>F. NAC.</b>
+                <input className="in" type="date" style={{ width: 150 }} max={toISO()} value={datos.nacimiento} onChange={setDato('nacimiento')} />
+              </label>
+              <div className="fld"><b>EDAD</b><span className="ro">{age(datos.nacimiento)} años</span></div>
+              {datosDirty && <span className="ts" role="status">Datos modificados · pulsa Guardar</span>}
+            </div>
+            <div className="hdr-row">
+              <label className="fld"><b>SOCIEDAD</b>
+                <select className="in" style={{ width: 190 }} value={datos.sociedad} onChange={setDato('sociedad')}>
+                  {/* Si la sociedad guardada no está en la lista, la añadimos para no perderla. */}
+                  {[...new Set([datos.sociedad, ...SOCIEDADES])].map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+              <label className="fld"><b>MUTUA</b>
+                <input className="in" style={{ width: 120 }} value={datos.mutua} onChange={setDato('mutua')} />
+              </label>
               <label className="fld"><b>MÉDICO</b>
                 <select className="in" style={{ width: 140 }} value={medico} onChange={(e) => setMedico(e.target.value)}>
                   {MEDICOS.map((m) => <option key={m}>{m}</option>)}
@@ -148,7 +190,10 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
               </label>
             </div>
             <div className="hdr-row">
-              <div className="fld"><b>FECHA</b><span className="ro">{isoToDMY(toISO())}</span><span className="hoy">HOY</span></div>
+              <label className="fld"><b>FECHA</b>
+                <input className="in" type="date" aria-label="Fecha de la visita" style={{ width: 150 }} value={fechaVisita} onChange={(e) => setFechaVisita(e.target.value || toISO())} />
+                <button type="button" className="hoy" title="Volver a la fecha de hoy" onClick={() => setFechaVisita(toISO())}>HOY</button>
+              </label>
               <div className="tb" role="toolbar" aria-label="Acciones de la historia">
                 <button type="button" className="ib" title="Imprimir" aria-label="Imprimir" onClick={() => window.print()}><Icon name="print" /></button>
                 <button type="button" className="ib" title="Vaciar consulta" aria-label="Vaciar consulta" onClick={vaciarConsulta}><Icon name="file" /></button>
@@ -166,7 +211,7 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
             </div>
             <label className="hdr-row" style={{ marginBottom: 0 }}>
               <b className="small">PERSONAL ASISTENCIAL PARTICIPANTE:</b>
-              <select className="in grow1" value={prof} onChange={(e) => setProf(e.target.value)}>
+              <select className="in grow1" aria-label="Personal asistencial participante" value={prof} onChange={(e) => setProf(e.target.value)}>
                 {PROFESIONALES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </label>
@@ -179,7 +224,7 @@ export default function HistoriaClinica({ hc, appointmentId, prestacion, notify,
             {sec === 'mot' && <Motivo fm={fm} />}
             {sec === 'ref' && <Refraccion fm={fm} notify={notify} visits={patient.visits} />}
             {sec === 'ten' && <Tension fm={fm} visits={patient.visits} />}
-            {GENERIC[sec] && <GenericSection fm={fm} fields={GENERIC[sec]} />}
+            {SECTION_FORMS[sec] && <StructuredSection key={sec} fm={fm} sec={sec} />}
           </section>
 
           <div className="seclist">
