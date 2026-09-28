@@ -40,22 +40,29 @@ consulta, desde el ordenador **o desde el móvil**.
 |---|---|---|
 | Frontend | **React 19** + **Vite** | Interfaz de usuario; Vite es el servidor de desarrollo y el empaquetador |
 | Backend | **Node.js** + **Express 5** | API REST que recibe y devuelve JSON |
-| Base de datos | **SQLite** (vía `better-sqlite3`) | Un solo archivo `.db`, sin instalar ningún servidor |
+| Base de datos | **PostgreSQL** en **Supabase** (vía `pg`) | Base de datos en la nube; los datos se conservan aunque el servidor se reinicie |
+| Hosting | **Render** | Un solo servicio web que sirve la API y el frontend |
 | Tests | `node:test` (incluido en Node) | Pruebas automáticas de la API |
 
 ---
 
 ## Cómo ejecutarlo
 
-Necesitas **Node.js 20 o superior** ([descargar](https://nodejs.org)).
+Necesitas **Node.js 20.12 o superior** ([descargar](https://nodejs.org)) y una base de datos
+PostgreSQL. Lo más sencillo es usar la misma de Supabase (ver [Despliegue](#despliegue-render--supabase)).
 
 ```bash
 # 1. Instalar dependencias (frontend y backend a la vez)
 npm install
 
-# 2. Arrancar en modo desarrollo (API + web con recarga automática)
+# 2. Configurar la base de datos: copia la plantilla y pon tu DATABASE_URL
+cp server/.env.example server/.env
+
+# 3. Arrancar en modo desarrollo (API + web con recarga automática)
 npm run dev
 ```
+
+Al arrancar por primera vez, el servidor crea las tablas y carga los pacientes de práctica.
 
 Abre **http://localhost:5173**.
 
@@ -67,10 +74,10 @@ línea "Network". En Mac también la ves en *Ajustes → Wi-Fi → Detalles*.
 
 | Comando | Qué hace |
 |---|---|
-| `npm test` | Ejecuta los tests de la API |
+| `npm test` | Ejecuta los tests de la API (necesita `TEST_DATABASE_URL`, una base **distinta**: los tests la borran) |
 | `npm run build` | Compila el frontend para producción en `client/dist` |
 | `npm start` | Arranca solo Express, que sirve la API **y** el frontend compilado (http://localhost:3001) |
-| `npm run seed` | Borra los datos y recarga los pacientes de práctica |
+| `npm run seed` | Borra los datos de `DATABASE_URL` y recarga los pacientes de práctica |
 
 ---
 
@@ -79,14 +86,16 @@ línea "Network". En Mac también la ves en *Ajustes → Wi-Fi → Detalles*.
 ```
 clinic_dupe/
 ├── package.json          ← "workspaces": une client y server en un solo npm install
+├── render.yaml           ← configuración de despliegue en Render (Blueprint)
 ├── server/               ← BACKEND
+│   ├── .env.example      ← plantilla de variables de entorno (el .env real no se sube)
 │   ├── src/
-│   │   ├── index.js      ← arranca el servidor (puerto 3001)
+│   │   ├── index.js      ← carga .env, prepara la BD y arranca el servidor (puerto 3001)
 │   │   ├── app.js        ← configura Express: middlewares, rutas, errores
-│   │   ├── db.js         ← conexión a SQLite (crea tablas y datos si no existen)
-│   │   ├── schema.sql    ← definición de las tablas
+│   │   ├── db.js         ← pool de conexiones a PostgreSQL, query() y withTransaction()
+│   │   ├── schema.sql    ← definición de las tablas (+ seguridad RLS para Supabase)
 │   │   ├── seed.js       ← datos ficticios de práctica
-│   │   ├── errors.js     ← HttpError y utilidades de validación
+│   │   ├── errors.js     ← HttpError, validación y traducción de errores de Postgres
 │   │   └── routes/
 │   │       ├── appointments.js  ← /api/appointments (agenda)
 │   │       └── patients.js      ← /api/patients (pacientes y visitas)
@@ -118,14 +127,15 @@ clinic_dupe/
         │
         │  api.saveVisit() → fetch POST /api/patients/700101/visits  (JSON)
         ▼
-[ Vite proxy :5173 ]  reenvía /api/* al backend
+[ Vite proxy :5173 ]  en desarrollo reenvía /api/* al backend
+        ▼              (en Render no hace falta: Express sirve web y API)
         ▼
 [ Express :3001 ]     routes/patients.js valida los datos y, en una TRANSACCIÓN:
         │               1. inserta la visita
         │               2. actualiza los antecedentes
         │               3. marca la cita como "atendido"
         ▼
-[ SQLite clinic.db ]  guarda en disco
+[ PostgreSQL ]        Supabase guarda los datos en la nube
         │
         ▼  responde con la ficha actualizada (JSON)
 [ React ]  setPatient(...) → la vista previa se vuelve a pintar sola
@@ -152,19 +162,62 @@ clinic_dupe/
 
 1. **Formularios descritos como datos** (`fields.js` y `sectionForms.js`). La historia tiene más de 500 campos. En vez de escribir cada `<input>`, las tablas de refracción se describen en `GRIDS` y las demás secciones en `SECTION_FORMS`. Dos componentes (`RxGrid` y `StructuredSection`) las dibujan. Para añadir un campo basta con añadir una línea, y aparece también en la vista previa y en la base de datos.
 2. **La edad no se guarda, se calcula** a partir de la fecha de nacimiento. Si se guardara, dejaría de ser correcta en el siguiente cumpleaños. El nº de HC tampoco se puede editar: es la clave que enlaza citas y visitas.
-3. **Campos clínicos en JSON dentro de SQLite.** Lo que hay que filtrar u ordenar (fecha, hora, estado, nombre) tiene su propia columna. Los datos del formulario se guardan como JSON en una columna de texto. Es flexible, a cambio de que sea más difícil consultarlos con SQL. Lo explica `schema.sql`.
+3. **Campos clínicos en JSONB.** Lo que hay que filtrar u ordenar (fecha, hora, estado, nombre) tiene su propia columna con su tipo (`DATE`, `BOOLEAN`...). Los datos del formulario van en columnas `JSONB`: es flexible y aun así se pueden consultar (`data->>'ten1_od'`). Lo explica `schema.sql`.
 4. **Un solo estado de formulario** en `HistoriaClinica.jsx` ("lifting state up"). Las secciones solo leen y escriben su parte, y la vista previa ve siempre todos los datos.
 5. **La vista previa es una función pura** (`preview.js`): recibe datos y devuelve bloques, sin tocar React. Así es fácil de entender y de probar.
-6. **Transacciones** al guardar una visita: o se guardan los tres cambios, o ninguno.
-7. **Consultas parametrizadas** (`?`) en todo el SQL, para evitar la inyección SQL.
+6. **Transacciones** al guardar una visita: o se guardan los tres cambios, o ninguno. En Postgres todas las consultas de una transacción van por la misma conexión (`withTransaction` en `db.js`).
+7. **Consultas parametrizadas** (`$1`, `$2`...) en todo el SQL, para evitar la inyección SQL.
+8. **Secretos fuera del código.** La contraseña de la base de datos solo existe en `server/.env` (ignorado por git) y en el panel de Render.
+9. **Row Level Security activado.** Supabase publica una API automática para cada tabla; activando RLS sin políticas, esa puerta queda cerrada y solo nuestro servidor puede acceder.
+
+---
+
+## Despliegue (Render + Supabase)
+
+Todo gratis. La app entera (web + API) vive en **un** servicio de Render, y los datos en Supabase.
+
+### 1. Base de datos en Supabase
+
+1. Crea una cuenta en [supabase.com](https://supabase.com) y un **New project**.
+   - Región: **Central EU (Frankfurt)**, la misma que usaremos en Render, para que vayan rápido entre sí.
+   - Apunta la **contraseña de la base de datos** que eliges: la necesitas en el paso 3.
+2. Cuando el proyecto esté listo, pulsa **Connect** (arriba) → sección **Session pooler** y copia la URI:
+   ```
+   postgresql://postgres.xxxxxxxx:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+   ```
+   Sustituye `[YOUR-PASSWORD]` por tu contraseña. Esa es tu `DATABASE_URL`.
+
+   > ¿Por qué *Session pooler* y no *Direct connection*? La conexión directa de Supabase solo funciona por IPv6, y Render solo usa IPv4. El pooler en modo sesión es IPv4 y es el recomendado para un servidor que está siempre encendido.
+3. No hace falta crear tablas: el servidor las crea solo al arrancar.
+
+### 2. Probar en local (opcional, recomendado)
+
+Pon la `DATABASE_URL` en `server/.env` y ejecuta `npm run dev`. Si ves los pacientes en http://localhost:5173, la conexión funciona. En Supabase → **Table Editor** verás las tablas `patients`, `appointments` y `visits`.
+
+### 3. Servicio en Render
+
+1. Sube los últimos cambios a GitHub (`git push`).
+2. En [render.com](https://render.com): **New → Blueprint** → conecta GitHub y elige el repositorio `clinic_dupe`. Render lee `render.yaml`.
+3. Te pedirá el valor de **`DATABASE_URL`**: pega la URI de Supabase.
+4. Espera a que termine el despliegue (unos minutos) y abre la dirección `https://clinic-dupe-xxxx.onrender.com`.
+
+A partir de ahí, **cada `git push` a `main` vuelve a desplegar** la app.
+
+### Qué esperar del plan gratuito
+
+- **Render se duerme** tras 15 minutos sin visitas; la siguiente visita tarda ~1 minuto en despertarlo.
+- **Supabase pausa el proyecto** tras 1 semana sin uso. Se reactiva desde su panel (*Restore project*).
+- **`/api/reset` es público**: cualquiera con la dirección puede reiniciar los datos. Para un simulador con datos ficticios no importa, pero en una app real iría protegido con inicio de sesión.
+- ⚠️ **Nunca introduzcas datos reales de pacientes.** Esta app no tiene autenticación ni cumple los requisitos del RGPD para datos de salud.
 
 ## Ideas para seguir aprendiendo
 
 - [ ] Añadir `react-router` para tener URLs propias (`/paciente/700101`).
 - [ ] Tests del frontend con Vitest + Testing Library.
 - [ ] Inicio de sesión con varios usuarios (médico / optometrista).
-- [ ] Desplegarlo gratis (Render, Railway o Fly.io) para usarlo sin tener el Mac encendido.
 - [ ] Pasar a TypeScript.
+- [ ] Búsqueda sin tildes con la extensión `unaccent` de Postgres ("alvarez" → "Álvarez").
+- [ ] Verificar el certificado SSL de Supabase (ahora la conexión va cifrada, pero sin comprobar el certificado).
 
 ## Licencia
 

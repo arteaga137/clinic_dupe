@@ -1,27 +1,45 @@
 // =====================================================================
 // Tests de la API con el test runner que trae Node (node:test).
-// Ejecuta: `npm test` dentro de /server
+// Ejecuta: `npm test` (desde la raíz o desde /server)
 //
-// Cada test arranca la app en un puerto libre y le hace peticiones reales
-// con fetch, igual que haría el frontend. La BD es ':memory:' (vive solo
-// en RAM), así que los tests nunca tocan tu clinic.db.
+// Necesitan una base de datos PostgreSQL SOLO PARA TESTS, indicada en
+// TEST_DATABASE_URL (en server/.env). Los tests la BORRAN y la vuelven a
+// llenar, así que nunca uses aquí la misma base que en Render.
+// Si TEST_DATABASE_URL no está definida, los tests se saltan.
+//
+// Cada test hace peticiones reales con fetch a la app, igual que el frontend.
 // =====================================================================
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env.DB_PATH = ':memory:';
-// Import dinámico: debe ocurrir DESPUÉS de fijar DB_PATH.
-const { app } = await import('../src/app.js');
+try { process.loadEnvFile(); } catch { /* sin .env */ }
+const TEST_URL = process.env.TEST_DATABASE_URL;
+const skip = !TEST_URL && 'Define TEST_DATABASE_URL en server/.env para ejecutar los tests';
 
 let server;
 let base;
+let pool;
 
 before(async () => {
+  if (skip) return;
+  process.env.DATABASE_URL = TEST_URL; // la app usará la base de TEST
+  // Import dinámico: debe ocurrir DESPUÉS de fijar DATABASE_URL.
+  const { app } = await import('../src/app.js');
+  const db = await import('../src/db.js');
+  const { seedDatabase } = await import('../src/seed.js');
+  pool = db.pool;
+  await db.initDb();
+  await seedDatabase(pool); // empezamos siempre desde los datos de práctica
   server = app.listen(0); // 0 = "dame cualquier puerto libre"
   await new Promise((r) => server.once('listening', r));
   base = `http://localhost:${server.address().port}/api`;
 });
-after(() => server.close());
+
+after(async () => {
+  if (skip) return;
+  server.close();
+  await pool.end();
+});
 
 const json = (method, body) => ({
   method,
@@ -29,7 +47,7 @@ const json = (method, body) => ({
   body: JSON.stringify(body),
 });
 
-test('la agenda de hoy trae las citas de práctica con el nombre del paciente', async () => {
+test('la agenda de hoy trae las citas de práctica con el nombre del paciente', { skip }, async () => {
   const res = await fetch(`${base}/appointments`);
   assert.equal(res.status, 200);
   const citas = await res.json();
@@ -38,14 +56,14 @@ test('la agenda de hoy trae las citas de práctica con el nombre del paciente', 
   assert.equal(typeof citas[0].urgente, 'boolean');
 });
 
-test('cambiar el estado de una cita valida los valores', async () => {
+test('cambiar el estado de una cita valida los valores', { skip }, async () => {
   const ok = await fetch(`${base}/appointments/6`, json('PATCH', { status: 'sala' }));
   assert.equal((await ok.json()).status, 'sala');
   const bad = await fetch(`${base}/appointments/6`, json('PATCH', { status: 'volando' }));
   assert.equal(bad.status, 400);
 });
 
-test('buscar pacientes por nombre', async () => {
+test('buscar pacientes por nombre', { skip }, async () => {
   const res = await fetch(`${base}/patients?q=delgado`);
   const list = await res.json();
   assert.equal(list.length, 1);
@@ -53,7 +71,7 @@ test('buscar pacientes por nombre', async () => {
   assert.equal(list[0].num_visitas, 2);
 });
 
-test('guardar una visita la añade al historial y marca la cita como atendida', async () => {
+test('guardar una visita la añade al historial y marca la cita como atendida', { skip }, async () => {
   const res = await fetch(
     `${base}/patients/700101/visits`,
     json('POST', {
@@ -73,20 +91,20 @@ test('guardar una visita la añade al historial y marca la cita como atendida', 
   assert.equal(citas.find((c) => c.id === 6).status, 'atendido');
 });
 
-test('rechaza una visita vacía y un paciente inexistente', async () => {
+test('rechaza una visita vacía y un paciente inexistente', { skip }, async () => {
   const empty = await fetch(`${base}/patients/700101/visits`, json('POST', { data: {} }));
   assert.equal(empty.status, 400);
   const missing = await fetch(`${base}/patients/999999`);
   assert.equal(missing.status, 404);
 });
 
-test('alta de paciente asigna el siguiente nº de HC', async () => {
+test('alta de paciente asigna el siguiente nº de HC', { skip }, async () => {
   const res = await fetch(`${base}/patients`, json('POST', { nombre: 'Prueba Test, Ana', nacimiento: '1990-01-01' }));
   assert.equal(res.status, 201);
   assert.equal((await res.json()).hc, '700113');
 });
 
-test('editar los datos generales del paciente (y validar)', async () => {
+test('editar los datos generales del paciente (y validar)', { skip }, async () => {
   const ok = await fetch(`${base}/patients/700102`, json('PUT', { nombre: 'Benítez Soler, Andrés Javier', mutua: 'MUFACE' }));
   assert.equal(ok.status, 200);
   const p = await ok.json();
@@ -100,7 +118,7 @@ test('editar los datos generales del paciente (y validar)', async () => {
   assert.equal(futuro.status, 400);
 });
 
-test('una visita puede registrarse con otra fecha', async () => {
+test('una visita puede registrarse con otra fecha', { skip }, async () => {
   const res = await fetch(`${base}/patients/700110/visits`, json('POST', { fecha: '2026-01-15', data: { mot: 'Visita atrasada' } }));
   const { patient } = await res.json();
   assert.equal(patient.visits[0].fecha, '2026-01-15');
@@ -108,7 +126,12 @@ test('una visita puede registrarse con otra fecha', async () => {
   assert.equal(bad.status, 400);
 });
 
-test('reiniciar vuelve a los datos iniciales', async () => {
+test('una fecha imposible devuelve 400, no 500', { skip }, async () => {
+  const res = await fetch(`${base}/patients/700102`, json('PUT', { nacimiento: '1990-02-31' }));
+  assert.equal(res.status, 400);
+});
+
+test('reiniciar vuelve a los datos iniciales', { skip }, async () => {
   await fetch(`${base}/reset`, { method: 'POST' });
   const p = await (await fetch(`${base}/patients/700101`)).json();
   assert.equal(p.visits.length, 1);

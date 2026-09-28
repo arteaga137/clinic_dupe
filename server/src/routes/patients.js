@@ -7,147 +7,157 @@
 //   PUT  /api/patients/:hc                → editar nombre, nacimiento, sociedad, mutua
 //   PUT  /api/patients/:hc/antecedentes   → guardar antecedentes médicos
 //   POST /api/patients/:hc/visits         → guardar una consulta
+//
+// Nota sobre JSONB: al LEER, pg ya convierte las columnas JSONB en objetos
+// de JavaScript (no hace falta JSON.parse). Al ESCRIBIR, pasamos el objeto
+// con JSON.stringify para que Postgres reciba texto JSON válido.
 // =====================================================================
 
 import { Router } from 'express';
-import { db } from '../db.js';
-import { HttpError, requireFields, parseJSON } from '../errors.js';
+import { query, queryOne, withTransaction } from '../db.js';
+import { HttpError, requireFields } from '../errors.js';
 import { todayISO } from '../seed.js';
 
 export const patientsRouter = Router();
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Busca un paciente o lanza 404. Lo usan varias rutas. */
-function getPatientOr404(hc) {
-  const p = db.prepare('SELECT * FROM patients WHERE hc = ?').get(hc);
+async function getPatientOr404(hc) {
+  const p = await queryOne('SELECT * FROM patients WHERE hc = $1', [hc]);
   if (!p) throw new HttpError(404, `No existe el paciente con HC ${hc}`);
-  return { ...p, antecedentes: parseJSON(p.antecedentes) };
+  return p;
 }
 
 function getVisits(hc) {
   // Orden descendente: la visita más reciente primero (como "F3-Última visita").
-  return db
-    .prepare('SELECT * FROM visits WHERE hc = ? ORDER BY fecha DESC, id DESC')
-    .all(hc)
-    .map((v) => ({ ...v, data: parseJSON(v.data) }));
+  return query('SELECT * FROM visits WHERE hc = $1 ORDER BY fecha DESC, id DESC', [hc]);
 }
 
-/** Comprueba que el cuerpo sea un objeto plano ({...}), no un array ni texto. */
+/** Comprueba que el valor sea un objeto plano ({...}), no un array ni texto. */
 function assertPlainObject(value, name) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new HttpError(400, `${name} debe ser un objeto JSON`);
   }
 }
 
-patientsRouter.get('/', (req, res) => {
+patientsRouter.get('/', async (req, res) => {
   const q = (req.query.q || '').trim();
-  // LIKE '%texto%' busca el texto en cualquier parte. El texto va como
-  // parámetro (?), nunca pegado dentro del SQL.
-  const like = `%${q}%`;
-  const rows = db
-    .prepare(
-      `SELECT p.hc, p.nombre, p.nacimiento, p.sociedad,
-              (SELECT COUNT(*) FROM visits v WHERE v.hc = p.hc) AS num_visitas
-       FROM patients p
-       WHERE p.nombre LIKE ? OR p.hc LIKE ?
-       ORDER BY p.nombre`
-    )
-    .all(like, like);
+  // ILIKE = LIKE sin distinguir mayúsculas/minúsculas (propio de Postgres).
+  // '%texto%' busca el texto en cualquier parte del nombre o del HC.
+  // ::int convierte el COUNT (que Postgres da como número muy grande,
+  // y pg como texto) en un entero normal.
+  const rows = await query(
+    `SELECT p.hc, p.nombre, p.nacimiento, p.sociedad,
+            (SELECT COUNT(*)::int FROM visits v WHERE v.hc = p.hc) AS num_visitas
+     FROM patients p
+     WHERE p.nombre ILIKE $1 OR p.hc ILIKE $1
+     ORDER BY p.nombre`,
+    [`%${q}%`]
+  );
   res.json(rows);
 });
 
-patientsRouter.post('/', (req, res) => {
+patientsRouter.post('/', async (req, res) => {
   const b = req.body;
   requireFields(b, ['nombre', 'nacimiento']);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.nacimiento)) throw new HttpError(400, 'nacimiento debe ser AAAA-MM-DD');
+  if (!ISO_DATE.test(b.nacimiento)) throw new HttpError(400, 'nacimiento debe ser AAAA-MM-DD');
 
-  // Nuevo nº de HC = el mayor existente + 1. MAX(CAST(...)) compara como número.
-  const { maxHc } = db.prepare('SELECT MAX(CAST(hc AS INTEGER)) AS maxHc FROM patients').get();
-  const hc = String((maxHc || 700100) + 1);
+  // Nuevo nº de HC = el mayor existente + 1. `hc::int` lo compara como número.
+  const { maxhc } = await queryOne('SELECT MAX(hc::int) AS maxhc FROM patients');
+  const hc = String((maxhc || 700100) + 1);
 
-  db.prepare(
-    'INSERT INTO patients (hc, nombre, nacimiento, sociedad, mutua) VALUES (?, ?, ?, ?, ?)'
-  ).run(hc, b.nombre.trim(), b.nacimiento, b.sociedad || 'PRIVADO', b.mutua || '');
-
-  res.status(201).json(getPatientOr404(hc));
+  await query(
+    'INSERT INTO patients (hc, nombre, nacimiento, sociedad, mutua) VALUES ($1, $2, $3, $4, $5)',
+    [hc, b.nombre.trim(), b.nacimiento, b.sociedad || 'PRIVADO', b.mutua || '']
+  );
+  res.status(201).json(await getPatientOr404(hc));
 });
 
-patientsRouter.get('/:hc', (req, res) => {
-  const patient = getPatientOr404(req.params.hc);
-  res.json({ ...patient, visits: getVisits(patient.hc) });
+patientsRouter.get('/:hc', async (req, res) => {
+  const patient = await getPatientOr404(req.params.hc);
+  res.json({ ...patient, visits: await getVisits(patient.hc) });
 });
 
 // Editar los datos generales. El nº de HC NO se puede cambiar: es la clave
 // primaria y lo usan las citas y visitas para enlazarse con el paciente.
 // La EDAD tampoco se guarda: se calcula a partir de la fecha de nacimiento
 // (si la guardáramos, dejaría de ser correcta en el siguiente cumpleaños).
-patientsRouter.put('/:hc', (req, res) => {
-  const current = getPatientOr404(req.params.hc);
+patientsRouter.put('/:hc', async (req, res) => {
+  const current = await getPatientOr404(req.params.hc);
   const b = req.body ?? {};
   // Si un campo no viene en la petición, se conserva el valor actual.
   const next = {
-    nombre: (b.nombre ?? current.nombre).trim(),
+    nombre: String(b.nombre ?? current.nombre).trim(),
     nacimiento: b.nacimiento ?? current.nacimiento,
     sociedad: b.sociedad ?? current.sociedad,
     mutua: b.mutua ?? current.mutua,
   };
   if (!next.nombre) throw new HttpError(400, 'El nombre no puede estar vacío');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(next.nacimiento)) throw new HttpError(400, 'nacimiento debe ser AAAA-MM-DD');
+  if (!ISO_DATE.test(next.nacimiento)) throw new HttpError(400, 'nacimiento debe ser AAAA-MM-DD');
   if (next.nacimiento > todayISO()) throw new HttpError(400, 'La fecha de nacimiento no puede ser futura');
 
-  db.prepare('UPDATE patients SET nombre = @nombre, nacimiento = @nacimiento, sociedad = @sociedad, mutua = @mutua WHERE hc = @hc')
-    .run({ ...next, hc: current.hc });
-  res.json(getPatientOr404(current.hc));
+  const updated = await queryOne(
+    `UPDATE patients SET nombre = $1, nacimiento = $2, sociedad = $3, mutua = $4
+     WHERE hc = $5 RETURNING *`,
+    [next.nombre, next.nacimiento, next.sociedad, next.mutua, current.hc]
+  );
+  res.json(updated);
 });
 
-patientsRouter.put('/:hc/antecedentes', (req, res) => {
-  getPatientOr404(req.params.hc);
+patientsRouter.put('/:hc/antecedentes', async (req, res) => {
+  await getPatientOr404(req.params.hc);
   assertPlainObject(req.body, 'El cuerpo');
-  db.prepare('UPDATE patients SET antecedentes = ? WHERE hc = ?').run(JSON.stringify(req.body), req.params.hc);
-  res.json(getPatientOr404(req.params.hc));
+  const updated = await queryOne(
+    'UPDATE patients SET antecedentes = $1 WHERE hc = $2 RETURNING *',
+    [JSON.stringify(req.body), req.params.hc]
+  );
+  res.json(updated);
 });
 
 // Guardar una consulta hace TRES cosas que deben ir juntas:
-//   1. insertar la visita
-//   2. actualizar los antecedentes (si vienen)
+//   1. actualizar los antecedentes (si vienen)
+//   2. insertar la visita
 //   3. marcar la cita como "atendido"
 // Por eso van en una transacción: si una falla, no se aplica ninguna.
-patientsRouter.post('/:hc/visits', (req, res) => {
+patientsRouter.post('/:hc/visits', async (req, res) => {
   const hc = req.params.hc;
-  getPatientOr404(hc);
+  await getPatientOr404(hc);
 
   const { data = {}, antecedentes, appointmentId = null, profesional = '', prestacion = '' } = req.body ?? {};
   // La fecha de la visita es opcional (por defecto, hoy). Permite registrar
   // una consulta de otro día, como el campo FECHA del programa real.
   const fecha = req.body?.fecha || todayISO();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new HttpError(400, 'fecha debe ser AAAA-MM-DD');
+  if (!ISO_DATE.test(fecha)) throw new HttpError(400, 'fecha debe ser AAAA-MM-DD');
+  if (appointmentId !== null && !Number.isInteger(appointmentId)) throw new HttpError(400, 'appointmentId debe ser un número');
   assertPlainObject(data, 'data');
   if (antecedentes !== undefined) assertPlainObject(antecedentes, 'antecedentes');
-  if (Object.keys(data).length === 0 && antecedentes === undefined) {
+  const hasData = Object.keys(data).length > 0;
+  if (!hasData && antecedentes === undefined) {
     throw new HttpError(400, 'No hay datos de consulta que guardar');
   }
 
-  const save = db.transaction(() => {
+  // `client` es la conexión de la transacción: todas las consultas de
+  // dentro deben usarla (no `query`, que podría coger otra conexión).
+  const visitId = await withTransaction(async (client) => {
     if (antecedentes !== undefined) {
-      db.prepare('UPDATE patients SET antecedentes = ? WHERE hc = ?').run(JSON.stringify(antecedentes), hc);
+      await client.query('UPDATE patients SET antecedentes = $1 WHERE hc = $2', [JSON.stringify(antecedentes), hc]);
     }
-    let visitId = null;
-    if (Object.keys(data).length > 0) {
-      visitId = db
-        .prepare(
-          `INSERT INTO visits (hc, appointment_id, fecha, profesional, prestacion, data)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-        .run(hc, appointmentId, fecha, profesional, prestacion, JSON.stringify(data)).lastInsertRowid;
+    if (!hasData) return null;
 
-      if (appointmentId) {
-        // Solo marcamos la cita si pertenece a ESTE paciente (evita errores).
-        db.prepare("UPDATE appointments SET status = 'atendido' WHERE id = ? AND hc = ?").run(appointmentId, hc);
-      }
+    const { rows } = await client.query(
+      `INSERT INTO visits (hc, appointment_id, fecha, profesional, prestacion, data)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [hc, appointmentId, fecha, profesional, prestacion, JSON.stringify(data)]
+    );
+    if (appointmentId) {
+      // Solo marcamos la cita si pertenece a ESTE paciente (evita errores).
+      await client.query("UPDATE appointments SET status = 'atendido' WHERE id = $1 AND hc = $2", [appointmentId, hc]);
     }
-    return visitId;
+    return rows[0].id;
   });
 
-  const visitId = save();
   // Devolvemos la ficha completa actualizada: el frontend la pinta tal cual.
-  res.status(201).json({ visitId, patient: { ...getPatientOr404(hc), visits: getVisits(hc) } });
+  const patient = await getPatientOr404(hc);
+  res.status(201).json({ visitId, patient: { ...patient, visits: await getVisits(hc) } });
 });

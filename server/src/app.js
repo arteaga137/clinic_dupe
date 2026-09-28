@@ -14,9 +14,9 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db } from './db.js';
+import { pool } from './db.js';
 import { seedDatabase } from './seed.js';
-import { HttpError } from './errors.js';
+import { HttpError, fromPgError } from './errors.js';
 import { appointmentsRouter } from './routes/appointments.js';
 import { patientsRouter } from './routes/patients.js';
 
@@ -28,13 +28,18 @@ export const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 // 2) Rutas de la API.
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+// /api/health: Render la consulta para saber si el servicio está vivo.
+// Hacemos un "SELECT 1" para comprobar que también llega a la base de datos.
+app.get('/api/health', async (req, res) => {
+  await pool.query('SELECT 1');
+  res.json({ ok: true });
+});
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/patients', patientsRouter);
 
 // Botón "Reiniciar práctica": vuelve a cargar los datos iniciales.
-app.post('/api/reset', (req, res) => {
-  seedDatabase(db);
+app.post('/api/reset', async (req, res) => {
+  await seedDatabase(pool);
   res.json({ ok: true });
 });
 
@@ -54,7 +59,8 @@ if (existsSync(distDir)) {
 // 4) Manejador de errores: Express lo reconoce porque tiene 4 parámetros.
 //    Express 5 también captura aquí los errores lanzados con `throw`.
 app.use((err, req, res, next) => {
-  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  const httpErr = err instanceof HttpError ? err : fromPgError(err);
+  if (httpErr) return res.status(httpErr.status).json({ error: httpErr.message });
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON mal formado' });
   console.error(err);
   res.status(500).json({ error: 'Error interno del servidor' });

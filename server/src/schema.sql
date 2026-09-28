@@ -1,5 +1,5 @@
 -- =====================================================================
--- Esquema de la base de datos (SQLite)
+-- Esquema de la base de datos (PostgreSQL · Supabase)
 -- =====================================================================
 -- Tres tablas, una por cada "cosa" que existe en la clínica:
 --
@@ -7,45 +7,45 @@
 --   appointments  → las citas de la agenda (una fila por cita)
 --   visits        → cada consulta guardada en la historia clínica
 --
--- Decisión de diseño importante: los formularios clínicos tienen ~300
--- campos (refracción, tensión, fondo de ojo...). Crear una columna por
--- campo haría la tabla enorme y rígida. En su lugar guardamos esos
--- campos como JSON en una columna de texto (`antecedentes`, `data`).
---   ✔ Ventaja: añadir un campo nuevo en el frontend no requiere tocar la BD.
---   ✘ Coste: no podemos hacer consultas SQL cómodas sobre esos campos
---     (aunque SQLite tiene funciones json_extract() si algún día hace falta).
--- Los datos que SÍ necesitamos filtrar/ordenar (fecha, hora, estado,
--- nombre...) tienen su propia columna.
+-- Decisión de diseño: los formularios clínicos tienen unos 560 campos.
+-- Crear una columna por campo haría la tabla enorme y rígida, así que
+-- guardamos esos campos en columnas JSONB (`antecedentes`, `data`).
+--   ✔ Añadir un campo en el frontend no obliga a tocar la base de datos.
+--   ✔ JSONB es JSON "binario": Postgres lo valida y permite consultarlo,
+--     p. ej.  SELECT data->>'ten1_od' FROM visits;
+--   ✘ Sin columnas propias, esos campos no tienen tipo ni restricciones.
+-- Los datos que SÍ filtramos u ordenamos (fecha, hora, estado, nombre...)
+-- tienen su propia columna con su tipo.
 --
--- "IF NOT EXISTS" hace que este script se pueda ejecutar en cada arranque
--- sin borrar nada: solo crea lo que falte.
+-- "IF NOT EXISTS" hace que el script pueda ejecutarse en cada arranque sin
+-- borrar nada: solo crea lo que falte.
 -- =====================================================================
 
--- Obliga a SQLite a respetar las claves foráneas (por defecto no lo hace).
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS patients (
-  hc            TEXT PRIMARY KEY,          -- nº de historia clínica
-  nombre        TEXT NOT NULL,             -- "Apellidos, Nombre"
-  nacimiento    TEXT NOT NULL,             -- fecha ISO: AAAA-MM-DD
-  sociedad      TEXT NOT NULL DEFAULT 'PRIVADO',  -- aseguradora
+  hc            TEXT PRIMARY KEY,                    -- nº de historia clínica
+  nombre        TEXT NOT NULL,                       -- "Apellidos, Nombre"
+  nacimiento    DATE NOT NULL,                       -- tipo fecha de verdad
+  sociedad      TEXT NOT NULL DEFAULT 'PRIVADO',     -- aseguradora
   mutua         TEXT NOT NULL DEFAULT '',
-  antecedentes  TEXT NOT NULL DEFAULT '{}' -- JSON con alergias, medicación...
+  antecedentes  JSONB NOT NULL DEFAULT '{}'::jsonb   -- alergias, medicación...
 );
 
 CREATE TABLE IF NOT EXISTS appointments (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  fecha       TEXT NOT NULL,               -- AAAA-MM-DD
-  hora        TEXT NOT NULL,               -- HH:MM
+  -- GENERATED ... AS IDENTITY: Postgres asigna el id automáticamente
+  -- (1, 2, 3...). Es el equivalente moderno de AUTOINCREMENT / SERIAL.
+  id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  fecha       DATE NOT NULL,
+  -- '~' es "cumple la expresión regular": obliga al formato HH:MM.
+  hora        TEXT NOT NULL CHECK (hora ~ '^[0-2][0-9]:[0-5][0-9]$'),
   ticket      TEXT NOT NULL DEFAULT '',
   nota        TEXT NOT NULL DEFAULT '',
   medico      TEXT NOT NULL,
   hc          TEXT NOT NULL REFERENCES patients(hc) ON DELETE CASCADE,
-  prestacion  TEXT NOT NULL,               -- PRIMERA CONSULTA, REVISIÓN...
+  prestacion  TEXT NOT NULL,
   -- CHECK limita los valores posibles: la BD rechaza cualquier otro estado.
   status      TEXT NOT NULL DEFAULT 'citado'
               CHECK (status IN ('citado', 'sala', 'consulta', 'atendido')),
-  urgente     INTEGER NOT NULL DEFAULT 0   -- SQLite no tiene booleanos: 0/1
+  urgente     BOOLEAN NOT NULL DEFAULT false       -- Postgres sí tiene booleanos
 );
 
 -- Un índice es como el índice de un libro: acelera las búsquedas por fecha,
@@ -53,14 +53,27 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE INDEX IF NOT EXISTS idx_appointments_fecha ON appointments (fecha);
 
 CREATE TABLE IF NOT EXISTS visits (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   hc              TEXT NOT NULL REFERENCES patients(hc) ON DELETE CASCADE,
   appointment_id  INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
-  fecha           TEXT NOT NULL,           -- AAAA-MM-DD
+  fecha           DATE NOT NULL,
   profesional     TEXT NOT NULL DEFAULT '',
   prestacion      TEXT NOT NULL DEFAULT '',
-  data            TEXT NOT NULL DEFAULT '{}',  -- JSON con los campos de la consulta
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  data            JSONB NOT NULL DEFAULT '{}'::jsonb,  -- campos de la consulta
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()   -- fecha y hora con zona horaria
 );
 
 CREATE INDEX IF NOT EXISTS idx_visits_hc ON visits (hc);
+
+-- ---------------------------------------------------------------------
+-- SEGURIDAD en Supabase: Row Level Security (RLS)
+-- ---------------------------------------------------------------------
+-- Supabase publica automáticamente una API REST para cada tabla del
+-- esquema "public". Si RLS está desactivado, cualquiera con la clave
+-- pública ("anon key") del proyecto podría leer o borrar estas tablas.
+-- Activando RLS SIN crear ninguna política, esa API queda bloqueada.
+-- Nuestro servidor Express no se ve afectado: se conecta con el usuario
+-- "postgres", que es el dueño de las tablas y se salta RLS.
+ALTER TABLE patients     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE visits       ENABLE ROW LEVEL SECURITY;

@@ -6,7 +6,11 @@
 // inventados: nunca metas datos reales de pacientes en un repositorio.
 // =====================================================================
 
-/** Devuelve la fecha de hoy en formato ISO local (AAAA-MM-DD). */
+/**
+ * Fecha de hoy en formato ISO (AAAA-MM-DD) según la zona horaria del
+ * servidor. Los servidores de Render usan UTC; por eso en render.yaml
+ * fijamos TZ=Europe/Madrid, para que "hoy" cambie a medianoche en España.
+ */
 export function todayISO() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -97,39 +101,47 @@ const APPOINTMENTS = [
 /**
  * Borra todo y vuelve a cargar los datos de práctica.
  * Va dentro de una TRANSACCIÓN: o se ejecuta todo, o nada. Si algo falla a
- * mitad, SQLite deshace los cambios y la BD no queda a medias.
+ * mitad, Postgres deshace los cambios (ROLLBACK) y la BD no queda a medias.
+ *
+ * Recibe el `pool` de conexiones como parámetro (en vez de importarlo de
+ * db.js) para evitar una importación circular: db.js ya importa este archivo.
  */
-export function seedDatabase(db) {
-  const insertPatient = db.prepare(
-    `INSERT INTO patients (hc, nombre, nacimiento, sociedad, antecedentes)
-     VALUES (@hc, @nombre, @nacimiento, @sociedad, @antecedentes)`
-  );
-  const insertVisit = db.prepare(
-    `INSERT INTO visits (hc, fecha, profesional, prestacion, data)
-     VALUES (@hc, @fecha, @profesional, @prestacion, @data)`
-  );
-  const insertAppt = db.prepare(
-    `INSERT INTO appointments (fecha, hora, ticket, nota, medico, hc, prestacion, status, urgente)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
+export async function seedDatabase(pool) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // TRUNCATE vacía las tablas de golpe. RESTART IDENTITY hace que los ids
+    // vuelvan a empezar en 1, y CASCADE respeta las claves foráneas.
+    await client.query('TRUNCATE visits, appointments, patients RESTART IDENTITY CASCADE');
 
-  const run = db.transaction(() => {
-    // El orden importa por las claves foráneas: primero los "hijos".
-    db.exec('DELETE FROM visits; DELETE FROM appointments; DELETE FROM patients;');
-    // Reinicia los contadores AUTOINCREMENT para que los ids empiecen en 1.
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('visits', 'appointments');");
-
+    // En pg, los valores van como $1, $2... y se pasan en un array aparte.
     for (const p of PATIENTS) {
-      // JSON.stringify convierte el objeto JS en texto para guardarlo.
-      insertPatient.run({ ...p, sociedad: p.sociedad, antecedentes: JSON.stringify(p.antecedentes || {}) });
+      await client.query(
+        `INSERT INTO patients (hc, nombre, nacimiento, sociedad, antecedentes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        // JSON.stringify: convertimos el objeto en texto JSON para la columna JSONB.
+        [p.hc, p.nombre, p.nacimiento, p.sociedad, JSON.stringify(p.antecedentes || {})]
+      );
     }
-    for (const v of VISITS) insertVisit.run({ ...v, data: JSON.stringify(v.data) });
-
+    for (const v of VISITS) {
+      await client.query(
+        `INSERT INTO visits (hc, fecha, profesional, prestacion, data) VALUES ($1, $2, $3, $4, $5)`,
+        [v.hc, v.fecha, v.profesional, v.prestacion, JSON.stringify(v.data)]
+      );
+    }
     const hoy = todayISO();
     for (const [hora, ticket, nota, medico, hc, prest, status, urg = 0] of APPOINTMENTS) {
-      insertAppt.run(hoy, hora, ticket, nota, medico, hc, prest, status, urg);
+      await client.query(
+        `INSERT INTO appointments (fecha, hora, ticket, nota, medico, hc, prestacion, status, urgente)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [hoy, hora, ticket, nota, medico, hc, prest, status, Boolean(urg)]
+      );
     }
-  });
-
-  run();
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }

@@ -4,15 +4,17 @@ node_modules/
 # Frontend compilado (se genera con `npm run build`)
 client/dist/
 
-# Base de datos local: tus datos de práctica no van al repositorio
+# Restos de la versión SQLite (si los tuvieras en local)
 server/data/
 *.db
 *.db-shm
 *.db-wal
 
-# Variables de entorno y secretos
+# Variables de entorno y secretos (¡la contraseña de la base de datos!)
 .env
 .env.*
+# ...excepto la plantilla, que sí se sube para que otros sepan qué rellenar
+!.env.example
 
 # Archivos del sistema / editores
 .DS_Store

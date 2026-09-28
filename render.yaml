@@ -1,0 +1,27 @@
+# =====================================================================
+# render.yaml — "Blueprint" de Render: describe el servicio como código.
+# En Render: New → Blueprint → elige este repositorio, y lo crea todo.
+# =====================================================================
+services:
+  - type: web                    # servicio web (recibe peticiones HTTP)
+    name: clinic-dupe
+    runtime: node
+    plan: free
+    region: frankfurt            # la región más cercana a España; usa la misma en Supabase
+    # Instala dependencias de client y server (workspaces) y compila React.
+    buildCommand: npm install && npm run build
+    # Arranca Express, que sirve la API y también el frontend compilado.
+    startCommand: npm start
+    # Render llama aquí para saber si la app (y la base de datos) responde.
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit    # cada `git push` a main vuelve a desplegar
+    envVars:
+      # sync: false → Render te pedirá el valor al crear el servicio.
+      # Es la URI "Session pooler" de Supabase. Nunca la pongas en el código.
+      - key: DATABASE_URL
+        sync: false
+      - key: NODE_VERSION
+        value: "22"
+      # Los servidores de Render usan UTC. Así "hoy" es el día de España.
+      - key: TZ
+        value: Europe/Madrid
