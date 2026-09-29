@@ -1,205 +1,142 @@
 // =====================================================================
-// seed.js — datos de práctica (100 % ficticios)
+// seed.js — carga inicial de la base de datos de práctica
 // =====================================================================
-// "Seed" (semilla) es el nombre habitual para los datos iniciales de una
-// aplicación. Todos los nombres, números de historia y datos clínicos son
-// inventados: nunca metas datos reales de pacientes en un repositorio.
+// Pacientes = 36 casos escritos a mano (seedData.js) + ~380 generados a
+// partir de plantillas (generator/). Todos con su historial de visitas.
+//
+// Las CITAS de cada día NO se crean aquí: las crea agenda.js la primera
+// vez que alguien abre ese día en la agenda. Así la agenda nunca se queda
+// vacía, pasen los días que pasen.
 // =====================================================================
+
+import { CASES } from './seedData.js';
+import { createRng } from './generator/random.js';
+import { makePatient, makeHistory, addDays, isWeekend, toWeekday, SLOTS } from './generator/index.js';
+
+/** Súbelo cuando cambien los datos de práctica: el servidor recargará la BD sola al arrancar. */
+export const SEED_VERSION = 4;
+const GENERATED_PATIENTS = 380;
 
 /**
- * Fecha de hoy en formato ISO (AAAA-MM-DD) según la zona horaria del
- * servidor. Los servidores de Render usan UTC; por eso en render.yaml
- * fijamos TZ=Europe/Madrid, para que "hoy" cambie a medianoche en España.
+ * Fecha de hoy (AAAA-MM-DD) según la zona horaria del servidor. Los
+ * servidores de Render usan UTC; por eso en render.yaml fijamos
+ * TZ=Europe/Madrid, para que "hoy" cambie a medianoche en España.
  */
-import { CASES, TODAY_APPOINTMENTS } from './seedData.js';
-
 export function todayISO() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// ---------------------------------------------------------------------
-// Fechas relativas a hoy
-// ---------------------------------------------------------------------
-const pad = (n) => String(n).padStart(2, '0');
-const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6; // 0 = domingo, 6 = sábado
-
-/** Fecha de hace `days` días naturales; si cae en fin de semana, el viernes anterior. */
-function daysAgo(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  while (isWeekend(d)) d.setDate(d.getDate() - 1);
-  return toISO(d);
-}
-
-/**
- * Fecha a `n` días LABORABLES de hoy (n negativo = pasado, 0 = hoy).
- * Avanza día a día y solo cuenta los que no son sábado ni domingo.
- */
-function workdays(n) {
-  const d = new Date();
+/** Fecha a `n` días LABORABLES de `from` (n negativo = hacia atrás, 0 = el mismo día). */
+function workdays(from, n) {
+  let d = from;
   const step = n < 0 ? -1 : 1;
-  let left = Math.abs(n);
-  while (left > 0) {
-    d.setDate(d.getDate() + step);
+  for (let left = Math.abs(n); left > 0;) {
+    d = addDays(d, step);
     if (!isWeekend(d)) left--;
   }
-  return toISO(d);
+  return d;
 }
 
-// ---------------------------------------------------------------------
-// Reparto de huecos en la agenda
-// ---------------------------------------------------------------------
-// Horario de consulta: mañana 09:00–13:40 y tarde 16:00–18:40, cada 20 min.
-const SLOTS = [];
-for (const [from, to] of [[9 * 60, 14 * 60], [16 * 60, 19 * 60]]) {
-  for (let m = from; m < to; m += 20) SLOTS.push(`${pad(Math.floor(m / 60))}:${pad(m % 60)}`);
-}
+const MEDICO_DE = { 'Sanz Molina, Laura': 'DRA. SANZ', 'Molina Pardo, Andrés': 'DR. MOLINA', 'Ortega Gil, Pablo': 'OPTOMETRÍA' };
 
-/** Guarda qué huecos (fecha + médico + hora) ya están ocupados. */
-function createSlotBook() {
-  const used = new Set(); // un Set no admite duplicados y busca muy rápido
-  return {
-    take(fecha, medico, hora) { used.add(`${fecha}|${medico}|${hora}`); },
-    /** Primer hueco libre, empezando en una posición que depende del paciente
-     *  (así no se amontonan todas las citas a las 09:00). */
-    next(fecha, medico, startIndex) {
-      for (let i = 0; i < SLOTS.length; i++) {
-        const hora = SLOTS[(startIndex + i) % SLOTS.length];
-        const key = `${fecha}|${medico}|${hora}`;
-        if (!used.has(key)) { used.add(key); return hora; }
-      }
-      throw new Error(`Agenda llena: ${medico} el ${fecha}`);
-    },
-  };
-}
-
-const MEDICO_DE = {
-  'Sanz Molina, Laura': 'DRA. SANZ',
-  'Molina Pardo, Andrés': 'DR. MOLINA',
-  'Ortega Gil, Pablo': 'OPTOMETRÍA',
-};
-
-/** Ticket tipo "NGT-4": iniciales de apellidos y nombre + un número. */
 function ticketFor(c) {
   const [apellidos, nombre = ''] = c.nombre.split(',').map((t) => t.trim());
-  const ini = apellidos.split(' ').map((w) => w[0]).join('') + (nombre[0] || '');
-  return `${ini.toUpperCase()}-${(Number(c.hc) % 9) + 1}`;
+  return `${(apellidos.split(' ').map((w) => w[0]).join('') + (nombre[0] || '')).toUpperCase()}-${(Number(c.hc) % 9) + 1}`;
 }
 
-/**
- * Convierte los casos de seedData.js en filas listas para insertar:
- * pacientes, citas (pasadas, de hoy y futuras) y visitas.
- */
-export function buildSeed() {
-  const book = createSlotBook();
-  const appointments = []; // cada cita lleva `ref` si hay que enlazarle una visita
+/** Convierte casos + generador en filas listas para insertar. Función pura (se prueba sin BD). */
+export function buildSeed(today = todayISO()) {
+  const patients = [];
   const visits = [];
-  const hoy = todayISO();
-
-  // 1) Citas fijas de hoy.
-  for (const [hora, ticket, nota, medico, hc, prestacion, status, urgente = false] of TODAY_APPOINTMENTS) {
-    book.take(hoy, medico, hora);
-    appointments.push({ fecha: hoy, hora, ticket, nota, medico, hc, prestacion, status, urgente });
-  }
-
-  const patients = CASES.map((c) => ({
-    hc: c.hc, nombre: c.nombre, nacimiento: c.nacimiento, sociedad: c.sociedad, mutua: c.mutua || '',
-    antecedentes: c.antecedentes || {},
-  }));
-
-  CASES.forEach((c, index) => {
-    const start = (index * 3) % SLOTS.length;
-    // 2) Visitas anteriores. Las recientes (haceLab) generan su cita atendida.
-    for (const v of c.visitas || []) {
-      const medico = v.medico || MEDICO_DE[v.prof] || 'DRA. SANZ';
-      const fecha = v.haceLab !== undefined ? workdays(-v.haceLab) : daysAgo(v.hace);
-      const visit = { hc: c.hc, fecha, profesional: v.prof, prestacion: v.prest, data: v.data, appointmentRef: null };
-      if (v.haceLab !== undefined) {
-        const ref = { fecha, hora: book.next(fecha, medico, start), ticket: ticketFor(c), nota: '', medico,
-          hc: c.hc, prestacion: v.prest, status: 'atendido', urgente: Boolean(v.urgente) };
-        appointments.push(ref);
-        visit.appointmentRef = ref; // se enlaza con el id real al insertar
-      }
-      visits.push(visit);
+  const appointments = [];
+  const taken = new Set(); // "fecha|médico|hora" ocupados
+  const slot = (fecha, medico, start) => {
+    for (let i = 0; i < SLOTS.length; i++) {
+      const hora = SLOTS[(start + i) % SLOTS.length];
+      if (!taken.has(`${fecha}|${medico}|${hora}`)) { taken.add(`${fecha}|${medico}|${hora}`); return hora; }
     }
-    // 3) Próxima cita (futura o de hoy).
+    throw new Error(`Sin huecos: ${medico} ${fecha}`);
+  };
+
+  // 1) Casos escritos a mano.
+  CASES.forEach((c, i) => {
+    patients.push({ hc: c.hc, nombre: c.nombre, nacimiento: c.nacimiento, sociedad: c.sociedad, mutua: c.mutua || '',
+      caso: c.caso, antecedentes: c.antecedentes || {} });
+    for (const v of c.visitas || []) {
+      const fecha = v.haceLab !== undefined ? workdays(today, -v.haceLab) : toWeekday(addDays(today, -v.hace));
+      visits.push({ hc: c.hc, fecha, profesional: v.prof, prestacion: v.prest, data: v.data });
+      if (v.haceLab !== undefined) {
+        const medico = MEDICO_DE[v.prof] || 'DRA. SANZ';
+        appointments.push({ fecha, hora: slot(fecha, medico, i * 3), ticket: ticketFor(c), nota: '', medico, hc: c.hc,
+          prestacion: v.prest, status: 'atendido', urgente: Boolean(v.urgente) });
+      }
+    }
     if (c.proxima) {
-      const p = c.proxima;
-      const fecha = workdays(p.en);
-      appointments.push({ fecha, hora: book.next(fecha, p.medico, start), ticket: ticketFor(c), nota: p.nota || '',
-        medico: p.medico, hc: c.hc, prestacion: p.prest, status: 'citado', urgente: Boolean(p.urgente) });
+      const fecha = workdays(today, c.proxima.en);
+      appointments.push({ fecha, hora: slot(fecha, c.proxima.medico, i * 3), ticket: ticketFor(c), nota: c.proxima.nota || '',
+        medico: c.proxima.medico, hc: c.hc, prestacion: c.proxima.prest, status: fecha < today ? 'atendido' : 'citado',
+        urgente: Boolean(c.proxima.urgente) });
     }
   });
 
-  // 4) Relleno: que los próximos 10 días laborables tengan al menos 7 citas,
-  //    como una agenda real. Usamos un generador pseudoaleatorio con semilla
-  //    fija: "aleatorio" pero IGUAL en cada reinicio (reproducible).
-  let seed = 42;
-  const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
-  const FILL = [['REVISIÓN', 'DRA. SANZ'], ['PRIMERA CONSULTA', 'DR. MOLINA'], ['REVISIÓN', 'OPTOMETRÍA'],
-    ['PRIMERA CONSULTA', 'DRA. SANZ'], ['REVISIÓN', 'DR. MOLINA'], ['PREVIO REFRACTIVA', 'OPTOMETRÍA']];
-  for (let day = 1; day <= 10; day++) {
-    const fecha = workdays(day);
-    const booked = new Set(appointments.filter((a) => a.fecha === fecha).map((a) => a.hc));
-    while (booked.size < 7) {
-      const c = CASES[rand(CASES.length)];
-      if (booked.has(c.hc)) continue; // un paciente, una cita por día
-      booked.add(c.hc);
-      const [prestacion, medico] = FILL[rand(FILL.length)];
-      appointments.push({ fecha, hora: book.next(fecha, medico, rand(SLOTS.length)), ticket: ticketFor(c), nota: '',
-        medico, hc: c.hc, prestacion, status: 'citado', urgente: false });
+  // 2) Pacientes generados, con su historial.
+  const rng = createRng('semilla-base'); // misma semilla → mismos pacientes en cada reinicio
+  const usedNames = new Set(patients.map((p) => p.nombre));
+  for (let i = 0; i < GENERATED_PATIENTS; i++) {
+    const p = makePatient(700137 + i, rng, usedNames, today);
+    patients.push(p);
+    for (const v of makeHistory(p, today, rng)) {
+      visits.push({ hc: p.hc, fecha: v.fecha, profesional: v.profesional, prestacion: v.prestacion, data: v.data });
     }
   }
-
-  // Ordenamos las citas por fecha y hora: así los ids siguen el orden de la agenda.
-  appointments.sort((a, b) => (a.fecha + a.hora + a.medico).localeCompare(b.fecha + b.hora + b.medico));
   return { patients, appointments, visits };
 }
 
+// ---------------------------------------------------------------------
+// Inserción por lotes
+// ---------------------------------------------------------------------
+// Insertar 1.500 filas una a una son 1.500 viajes de ida y vuelta a
+// Supabase (varios segundos). Con json_to_recordset enviamos TODAS las
+// filas en un único parámetro JSON y Postgres las convierte en una tabla
+// temporal dentro de la misma consulta: un solo viaje.
+export async function insertMany(client, table, columns, rows, returning = '') {
+  if (!rows.length) return [];
+  const names = Object.keys(columns).join(', ');
+  const types = Object.entries(columns).map(([c, t]) => `${c} ${t}`).join(', ');
+  const { rows: out } = await client.query(
+    `INSERT INTO ${table} (${names}) SELECT ${names} FROM json_to_recordset($1) AS x(${types}) ${returning}`,
+    [JSON.stringify(rows)]
+  );
+  return out;
+}
+
+export const PATIENT_COLS = { hc: 'text', nombre: 'text', nacimiento: 'date', sociedad: 'text', mutua: 'text', antecedentes: 'jsonb', caso: 'text' };
+export const APPT_COLS = { fecha: 'date', hora: 'text', ticket: 'text', nota: 'text', medico: 'text', hc: 'text', prestacion: 'text', status: 'text', urgente: 'boolean' };
+export const VISIT_COLS = { hc: 'text', appointment_id: 'int', fecha: 'date', profesional: 'text', prestacion: 'text', data: 'jsonb' };
+
 /**
- * Borra todo y vuelve a cargar los datos de práctica.
- * Va dentro de una TRANSACCIÓN: o se ejecuta todo, o nada. Si algo falla a
- * mitad, Postgres deshace los cambios (ROLLBACK) y la BD no queda a medias.
- *
- * Recibe el `pool` de conexiones como parámetro (en vez de importarlo de
- * db.js) para evitar una importación circular: db.js ya importa este archivo.
+ * Borra todo y vuelve a cargar los datos de práctica, en una TRANSACCIÓN:
+ * o se ejecuta todo, o nada (si algo falla, ROLLBACK y la BD queda como estaba).
+ * Recibe el `pool` como parámetro para evitar una importación circular con db.js.
  */
 export async function seedDatabase(pool) {
+  const { patients, appointments, visits } = buildSeed();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // TRUNCATE vacía las tablas de golpe. RESTART IDENTITY hace que los ids
-    // vuelvan a empezar en 1, y CASCADE respeta las claves foráneas.
-    await client.query('TRUNCATE visits, appointments, patients RESTART IDENTITY CASCADE');
-
-    const { patients, appointments, visits } = buildSeed();
-
-    // En pg, los valores van como $1, $2... y se pasan en un array aparte.
-    for (const p of patients) {
-      await client.query(
-        `INSERT INTO patients (hc, nombre, nacimiento, sociedad, mutua, antecedentes)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        // JSON.stringify: convertimos el objeto en texto JSON para la columna JSONB.
-        [p.hc, p.nombre, p.nacimiento, p.sociedad, p.mutua, JSON.stringify(p.antecedentes)]
-      );
-    }
-    for (const a of appointments) {
-      const { rows } = await client.query(
-        `INSERT INTO appointments (fecha, hora, ticket, nota, medico, hc, prestacion, status, urgente)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-        [a.fecha, a.hora, a.ticket, a.nota, a.medico, a.hc, a.prestacion, a.status, a.urgente]
-      );
-      a.id = rows[0].id; // lo guardamos para enlazar la visita de ese día
-    }
-    for (const v of visits) {
-      await client.query(
-        `INSERT INTO visits (hc, appointment_id, fecha, profesional, prestacion, data) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [v.hc, v.appointmentRef?.id ?? null, v.fecha, v.profesional, v.prestacion, JSON.stringify(v.data)]
-      );
-    }
+    // TRUNCATE vacía las tablas de golpe; RESTART IDENTITY reinicia los ids.
+    await client.query('TRUNCATE visits, appointments, patients, agenda_days RESTART IDENTITY CASCADE');
+    await insertMany(client, 'patients', PATIENT_COLS, patients);
+    const ids = await insertMany(client, 'appointments', APPT_COLS, appointments, 'RETURNING id, hc, fecha');
+    // Enlazamos cada visita con la cita de ese paciente ese día (si la hay).
+    const idOf = new Map(ids.map((a) => [`${a.hc}|${a.fecha}`, a.id]));
+    await insertMany(client, 'visits', VISIT_COLS, visits.map((v) => ({ ...v, appointment_id: idOf.get(`${v.hc}|${v.fecha}`) ?? null })));
+    await client.query(
+      `INSERT INTO meta (key, value) VALUES ('seed_version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [String(SEED_VERSION)]
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

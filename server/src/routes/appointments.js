@@ -20,6 +20,7 @@ import { Router } from 'express';
 import { query, queryOne } from '../db.js';
 import { HttpError, requireFields } from '../errors.js';
 import { todayISO } from '../seed.js';
+import { ensureAgenda } from '../agenda.js';
 
 export const appointmentsRouter = Router();
 
@@ -60,6 +61,9 @@ async function findClash({ fecha, hora, medico }, exceptId = null) {
 appointmentsRouter.get('/', async (req, res) => {
   const fecha = req.query.fecha || todayISO();
   if (!ISO_DATE.test(fecha)) throw new HttpError(400, 'fecha debe tener formato AAAA-MM-DD');
+
+  // Si es la primera vez que se abre este día, se rellena con citas.
+  await ensureAgenda(fecha);
 
   // $1 es un PARÁMETRO: pg envía el valor por separado del SQL. NUNCA
   // construyas SQL pegando texto del usuario: eso permite "inyección SQL",

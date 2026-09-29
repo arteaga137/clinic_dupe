@@ -20,7 +20,7 @@ consulta, desde el ordenador **o desde el móvil**.
 ## Qué puedes hacer
 
 - **Agenda**: citas del día con colores por estado (citado, en sala, en consulta, atendido, urgencia), filtros por turno y médico y navegación por días. Permite marcar la llegada, **crear, mover (reprogramar) y anular citas** viendo los huecos libres de cada médico, y dar de alta un paciente nuevo con su cita en un solo paso.
-- **36 pacientes ficticios** con casos clínicos coherentes: glaucoma (crónico, pseudoexfoliativo, cierre angular, hipertensión ocular), DMAE, retinopatía diabética, oclusión venosa, membrana epirretiniana, desprendimiento de retina, coriorretinopatía serosa central, queratocono, úlcera por lentillas, conjuntivitis vírica, ojo seco, distrofia de Fuchs, pterigión, uveítis, neuritis óptica, orbitopatía tiroidea, ptosis, chalazión, ambliopía y estrabismo, miopía infantil, cirugía refractiva y estética. Las fechas se calculan respecto al día de hoy, así que la agenda tiene citas pasadas y de las próximas dos semanas.
+- **Más de 400 pacientes ficticios** y una **agenda que se rellena sola cada día** (unas 30 citas por día laborable: pasadas ya atendidas con su visita, futuras pendientes, y cada día llegan pacientes nuevos). 36 casos están escritos a mano y el resto los fabrica un generador a partir de 34 plantillas de patologías, con historiales coherentes: glaucoma (crónico, pseudoexfoliativo, cierre angular, hipertensión ocular), DMAE, retinopatía diabética, oclusión venosa, membrana epirretiniana, desprendimiento de retina, coriorretinopatía serosa central, queratocono, úlcera por lentillas, conjuntivitis vírica, ojo seco, distrofia de Fuchs, pterigión, uveítis, neuritis óptica, orbitopatía tiroidea, ptosis, chalazión, ambliopía y estrabismo, miopía infantil, cirugía refractiva y estética. Las fechas se calculan respecto al día de hoy, así que la agenda tiene citas pasadas y de las próximas dos semanas.
 - **Pacientes**: buscador por nombre o nº de HC y alta de pacientes nuevos.
 - **Historia clínica**, con las mismas secciones que el programa original:
   - Antecedentes médicos (la caja de alergias se pone roja).
@@ -95,8 +95,15 @@ clinic_dupe/
 │   │   ├── app.js        ← configura Express: middlewares, rutas, errores
 │   │   ├── db.js         ← pool de conexiones a PostgreSQL, query() y withTransaction()
 │   │   ├── schema.sql    ← definición de las tablas (+ seguridad RLS para Supabase)
-│   │   ├── seedData.js   ← ⭐ los casos clínicos ficticios (pacientes, visitas, próximas citas)
-│   │   ├── seed.js       ← convierte los casos en filas: fechas relativas a hoy, huecos de agenda
+│   │   ├── seedData.js   ← los 36 casos clínicos escritos a mano
+│   │   ├── seed.js       ← carga inicial (casos + ~380 pacientes generados) e inserción por lotes
+│   │   ├── agenda.js     ← ⭐ rellena un día de la agenda la primera vez que se abre
+│   │   ├── generator/    ← ⭐ fábrica de datos de práctica
+│   │   │   ├── templates.js  ← 34 plantillas de patologías (catarata, glaucoma, DMAE...)
+│   │   │   ├── index.js      ← pacientes, historiales y planificación de un día (funciones puras)
+│   │   │   ├── helpers.js    ← piezas comunes (refracción, PIO, fondo de ojo...)
+│   │   │   ├── random.js     ← números aleatorios con semilla (reproducibles)
+│   │   │   └── names.js      ← nombres, apellidos y aseguradoras
 │   │   ├── errors.js     ← HttpError, validación y traducción de errores de Postgres
 │   │   └── routes/
 │   │       ├── appointments.js  ← /api/appointments (agenda)
@@ -174,8 +181,11 @@ clinic_dupe/
 7. **Consultas parametrizadas** (`$1`, `$2`...) en todo el SQL, para evitar la inyección SQL.
 8. **Secretos fuera del código.** La contraseña de la base de datos solo existe en `server/.env` (ignorado por git) y en el panel de Render.
 9. **Las reglas las impone el servidor.** El selector de huecos libres ayuda a elegir, pero es la API la que rechaza (409) dos citas del mismo médico a la misma hora, o mover/anular una cita ya atendida: al navegador se le puede saltar, al servidor no.
-10. **Datos de práctica verificados por un test.** `seedData.test.js` comprueba que cada caso clínico usa claves y opciones de desplegable que existen en el formulario; si no, el dato no se vería y nadie se daría cuenta.
-11. **Row Level Security activado.** Supabase publica una API automática para cada tabla; activando RLS sin políticas, esa puerta queda cerrada y solo nuestro servidor puede acceder.
+10. **Agenda "perezosa" (lazy).** Las citas de un día no existen hasta que alguien abre ese día; entonces `agenda.js` las genera y las guarda. La tabla `agenda_days` recuerda qué días ya se generaron (así no se duplican) y un candado de Postgres (`pg_advisory_xact_lock`) evita que dos peticiones a la vez generen lo mismo.
+11. **Aleatorio pero reproducible.** El generador usa números aleatorios con semilla: el mismo HC produce siempre el mismo perfil (graduación, PIO, ojo afectado), así que todas las visitas de un paciente son coherentes entre sí.
+12. **Recarga automática por versión.** `SEED_VERSION` (en `seed.js`) se guarda en la tabla `meta`. Si al arrancar no coincide, el servidor recarga los datos de práctica solo. ⚠️ Eso borra las visitas que hayas guardado.
+13. **Datos de práctica verificados por un test.** `seedData.test.js` comprueba que los casos escritos a mano y **todas las plantillas del generador** usan claves y opciones de desplegable que existen en el formulario; si no, el dato no se vería y nadie se daría cuenta.
+14. **Row Level Security activado.** Supabase publica una API automática para cada tabla; activando RLS sin políticas, esa puerta queda cerrada y solo nuestro servidor puede acceder.
 
 ---
 

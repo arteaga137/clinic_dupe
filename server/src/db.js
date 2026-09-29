@@ -14,7 +14,7 @@ import pg from 'pg';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { seedDatabase } from './seed.js';
+import { seedDatabase, SEED_VERSION } from './seed.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -76,12 +76,17 @@ export async function withTransaction(fn) {
   }
 }
 
-/** Crea las tablas si faltan y carga datos de práctica si está vacía. */
+/**
+ * Crea las tablas si faltan y carga los datos de práctica si la base está
+ * vacía o si son de una versión anterior (SEED_VERSION en seed.js).
+ * ⚠️ Al cambiar de versión se reemplazan TODOS los datos de práctica.
+ */
 export async function initDb() {
   await pool.query(readFileSync(join(__dirname, 'schema.sql'), 'utf8'));
   const { n } = await queryOne('SELECT COUNT(*)::int AS n FROM patients');
-  if (n === 0) {
+  const row = await queryOne("SELECT value FROM meta WHERE key = 'seed_version'");
+  if (n === 0 || row?.value !== String(SEED_VERSION)) {
     await seedDatabase(pool);
-    console.log('[db] Base de datos vacía: cargados datos de práctica.');
+    console.log(`[db] Datos de práctica cargados (versión ${SEED_VERSION}).`);
   }
 }

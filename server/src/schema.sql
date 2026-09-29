@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS patients (
   antecedentes  JSONB NOT NULL DEFAULT '{}'::jsonb   -- alergias, medicación...
 );
 
+-- "caso": tipo de patología (plantilla de generator/templates.js). Solo lo
+-- usa la agenda automática para inventar visitas coherentes; los pacientes
+-- dados de alta a mano lo tienen vacío. ADD COLUMN IF NOT EXISTS actualiza
+-- bases de datos creadas con una versión anterior de este esquema.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS caso TEXT;
+
 CREATE TABLE IF NOT EXISTS appointments (
   -- GENERATED ... AS IDENTITY: Postgres asigna el id automáticamente
   -- (1, 2, 3...). Es el equivalente moderno de AUTOINCREMENT / SERIAL.
@@ -65,6 +71,20 @@ CREATE TABLE IF NOT EXISTS visits (
 
 CREATE INDEX IF NOT EXISTS idx_visits_hc ON visits (hc);
 
+-- Días de la agenda que ya se han rellenado automáticamente (agenda.js).
+-- Si un día está aquí no se vuelve a rellenar, aunque borres sus citas.
+CREATE TABLE IF NOT EXISTS agenda_days (
+  fecha         DATE PRIMARY KEY,
+  generated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Pares clave/valor de control. Guarda la versión de los datos de práctica
+-- para recargarlos solos cuando cambian (ver initDb en db.js).
+CREATE TABLE IF NOT EXISTS meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 -- ---------------------------------------------------------------------
 -- SEGURIDAD en Supabase: Row Level Security (RLS)
 -- ---------------------------------------------------------------------
@@ -77,3 +97,5 @@ CREATE INDEX IF NOT EXISTS idx_visits_hc ON visits (hc);
 ALTER TABLE patients     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE visits       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agenda_days  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meta         ENABLE ROW LEVEL SECURITY;

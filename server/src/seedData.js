@@ -11,6 +11,11 @@
 //   haceLab: 3    → hace 3 días LABORABLES; además se crea en la agenda
 //                   la cita de ese día (atendida) enlazada a la visita
 //   proxima: { en: 5, ... } → cita dentro de 5 días laborables (0 = hoy)
+//   caso: 'glaucoma_caa'  → plantilla de generator/templates.js con la que
+//                           la agenda automática creará sus próximas visitas
+//
+// Estos 36 casos están escritos a mano. Los otros ~380 pacientes de la base
+// de datos los fabrica generator/ a partir de plantillas.
 //
 // ⚠️ Nombres, números y datos inventados, pensados para PRACTICAR el
 //    manejo del programa. No son una referencia clínica.
@@ -37,26 +42,10 @@ const rx = (grid, od = [], oi = []) => {
   return out;
 };
 
-// Citas de HOY (hora, ticket, nota, médico, HC, prestación, estado, urgente):
-// se mantienen fijas para que la agenda de hoy tenga todos los estados.
-export const TODAY_APPOINTMENTS = [
-  ['10:00', 'CRL-5', '', 'DRA. SANZ', '700103', 'PRIMERA CONSULTA', 'atendido'],
-  ['10:10', 'BSA-3', '', 'DRA. SANZ', '700102', 'PRIMERA CONSULTA', 'atendido'],
-  ['10:30', 'DFR-1', '', 'DRA. SANZ', '700104', 'REVISIÓN', 'sala'],
-  ['10:50', 'ELP-2', 'Trae informe', 'DRA. SANZ', '700105', 'REVISIÓN POSTOPERATORIA', 'sala'],
-  ['11:00', 'HCT-4', 'Urgencia', 'DRA. SANZ', '700108', 'CONSULTA URGENCIAS', 'sala', true],
-  ['11:20', 'APM-1', '', 'DRA. SANZ', '700101', 'REVISIÓN', 'citado'],
-  ['11:40', 'GVI-1', '', 'DR. MOLINA', '700107', 'LÁSER ARGÓN', 'citado'],
-  ['12:00', 'FOJ-9', 'Dilatar', 'DRA. SANZ', '700106', 'PRIMERA CONSULTA', 'citado'],
-  ['12:15', 'JRA-3', '', 'OPTOMETRÍA', '700110', 'REVISIÓN', 'citado'],
-  ['12:30', 'LSN-1', '', 'OPTOMETRÍA', '700111', 'PREVIO REFRACTIVA', 'citado'],
-  ['16:00', 'IMC-2', 'Carpeta ok', 'DR. MOLINA', '700109', 'PREVIO CATARATA', 'citado'],
-  ['16:30', 'MAS-1', '', 'DR. MOLINA', '700112', 'NOTA MÉDICA', 'citado'],
-];
 
 export const CASES = [
   // ================= Pacientes originales =================
-  { hc: '700101', nombre: 'Álvarez Prieto, Marta', nacimiento: '1968-02-14', sociedad: 'SANITAS, S.A.',
+  { hc: '700101', caso: 'catarata', nombre: 'Álvarez Prieto, Marta', nacimiento: '1968-02-14', sociedad: 'SANITAS, S.A.',
     antecedentes: { ap: 'HTA', hta: true, aqx: 'FACOEMULSIFICACIÓN + LIO OD (2021)', alergias: 'PENICILINA', medsis: 'ENALAPRIL 10 MG' },
     visitas: [{ hace: 200, prof: L, prest: 'REVISIÓN', data: {
       mot: 'Revisión anual. Refiere buena visión de lejos.',
@@ -68,11 +57,11 @@ export const CASES = [
       ...eye('fo', 'mac', 'Brillo foveal conservado', 'Drusas duras'),
       dx_dx: 'Pseudofaquia OD. Catarata incipiente OI.', dx_cie: 'H25.1', dx_ojo: 'OI', dx_rev: '12 meses' } }] },
 
-  { hc: '700102', nombre: 'Benítez Soler, Andrés', nacimiento: '1992-07-03', sociedad: 'PRIVADO' },
-  { hc: '700103', nombre: 'Castaño Ruiz, Lucía', nacimiento: '2016-05-21', sociedad: 'DKV SEGUROS, S.A.',
+  { hc: '700102', caso: 'revision_general', nombre: 'Benítez Soler, Andrés', nacimiento: '1992-07-03', sociedad: 'PRIVADO' },
+  { hc: '700103', caso: 'ametropia', nombre: 'Castaño Ruiz, Lucía', nacimiento: '2016-05-21', sociedad: 'DKV SEGUROS, S.A.',
     antecedentes: { afam: 'MADRE CON MIOPÍA ALTA', profesion: 'Estudiante' } },
 
-  { hc: '700104', nombre: 'Delgado Ferrer, Ramón', nacimiento: '1953-11-09', sociedad: 'SEGUR CAIXA ADESLAS',
+  { hc: '700104', caso: 'glaucoma_caa', nombre: 'Delgado Ferrer, Ramón', nacimiento: '1953-11-09', sociedad: 'SEGUR CAIXA ADESLAS',
     antecedentes: { aof: 'GLAUCOMA CRÓNICO AO', med: 'TIMOLOL 0,5% C/12H AO', alNoC: true, profesion: 'Jubilado/a' },
     visitas: [
       { hace: 202, prof: L, prest: 'REVISIÓN', data: {
@@ -92,13 +81,13 @@ export const CASES = [
         dx_tto: 'Continuar timolol 0,5 % colirio', dx_pauta: '1 gota cada 12 h en AO', dx_rev: '3 meses' } },
     ] },
 
-  { hc: '700105', nombre: 'Escudero Lima, Paula', nacimiento: '1981-09-30', sociedad: 'ASISA, S.A.', antecedentes: { aqx: 'LASIK AO (2019)' } },
-  { hc: '700106', nombre: 'Fuentes Olmo, Javier', nacimiento: '1975-01-18', sociedad: 'MAPFRE ESPAÑA, CIA.' },
-  { hc: '700107', nombre: 'García Valls, Inés', nacimiento: '1959-04-02', sociedad: 'PRIVADO',
+  { hc: '700105', caso: 'revision_general', nombre: 'Escudero Lima, Paula', nacimiento: '1981-09-30', sociedad: 'ASISA, S.A.', antecedentes: { aqx: 'LASIK AO (2019)' } },
+  { hc: '700106', caso: 'revision_general', nombre: 'Fuentes Olmo, Javier', nacimiento: '1975-01-18', sociedad: 'MAPFRE ESPAÑA, CIA.' },
+  { hc: '700107', caso: 'rd_diabetica', nombre: 'García Valls, Inés', nacimiento: '1959-04-02', sociedad: 'PRIVADO',
     antecedentes: { ap: 'DIABETES TIPO 2', diabetes: true, medsis: 'METFORMINA' } },
-  { hc: '700108', nombre: 'Herrera Campos, Tomás', nacimiento: '1996-12-11', sociedad: 'SANITAS, S.A.' },
+  { hc: '700108', caso: 'conj_viral', nombre: 'Herrera Campos, Tomás', nacimiento: '1996-12-11', sociedad: 'SANITAS, S.A.' },
 
-  { hc: '700109', nombre: 'Iglesias Mora, Carmen', nacimiento: '1962-08-25', sociedad: 'SEGUR CAIXA ADESLAS',
+  { hc: '700109', caso: 'catarata', nombre: 'Iglesias Mora, Carmen', nacimiento: '1962-08-25', sociedad: 'SEGUR CAIXA ADESLAS',
     antecedentes: { alergias: 'AINES' },
     visitas: [{ hace: 70, prof: L, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Visión borrosa progresiva en OD, deslumbramiento al conducir de noche.',
@@ -108,14 +97,14 @@ export const CASES = [
       dx_dx: 'Catarata nuclear senil AO, más avanzada en OD.', dx_cie: 'H25.1', dx_ojo: 'AO',
       dx_p_bio: true, dx_p_rec: true, dx_qx: 'Facoemulsificación + LIO OD', dx_rev: '1 mes' } }] },
 
-  { hc: '700110', nombre: 'Jiménez Roca, Álvaro', nacimiento: '1986-03-07', sociedad: 'DKV SEGUROS, S.A.' },
-  { hc: '700111', nombre: 'López Serrano, Nuria', nacimiento: '1970-10-19', sociedad: 'SANITAS, S.A.',
+  { hc: '700110', caso: 'ametropia', nombre: 'Jiménez Roca, Álvaro', nacimiento: '1986-03-07', sociedad: 'DKV SEGUROS, S.A.' },
+  { hc: '700111', caso: 'presbicia', nombre: 'López Serrano, Nuria', nacimiento: '1970-10-19', sociedad: 'SANITAS, S.A.',
     visitas: [{ hace: 238, prof: O, prest: 'REVISIÓN', data: rx('cp1', ['-2.25', undefined, undefined, '1.0'], ['-2.50', '-0.25', '170', '0.9']) }] },
-  { hc: '700112', nombre: 'Martín Aguado, Sergio', nacimiento: '1977-06-28', sociedad: 'PRIVADO' },
+  { hc: '700112', caso: 'revision_general', nombre: 'Martín Aguado, Sergio', nacimiento: '1977-06-28', sociedad: 'PRIVADO' },
 
   // ================= Casos nuevos =================
   // --- RETINA ---
-  { hc: '700113', nombre: 'Navarro Gil, Teresa', nacimiento: '1948-03-12', sociedad: 'SANITAS, S.A.',
+  { hc: '700113', caso: 'dmae_humeda', nombre: 'Navarro Gil, Teresa', nacimiento: '1948-03-12', sociedad: 'SANITAS, S.A.',
     antecedentes: { ap: 'HTA, DISLIPEMIA', hta: true, medsis: 'AMLODIPINO 5 MG, ATORVASTATINA 20 MG', aof: 'DMAE EXUDATIVA OI', aqx: 'FACOEMULSIFICACIÓN + LIO AO (2018)', alNoC: true, profesion: 'Jubilado/a' },
     visitas: [
       { hace: 90, prof: L, prest: 'CONSULTA URGENCIAS', data: {
@@ -137,7 +126,7 @@ export const CASES = [
     ],
     proxima: { en: 3, prest: 'REVISIÓN', medico: 'DRA. SANZ', nota: 'OCT antes de consulta' } },
 
-  { hc: '700114', nombre: 'Ortiz Blanco, Manuel', nacimiento: '1961-07-22', sociedad: 'SEGUR CAIXA ADESLAS',
+  { hc: '700114', caso: 'rd_diabetica', nombre: 'Ortiz Blanco, Manuel', nacimiento: '1961-07-22', sociedad: 'SEGUR CAIXA ADESLAS',
     antecedentes: { ap: 'DM TIPO 2 (15 AÑOS), HTA', diabetes: true, hta: true, medsis: 'METFORMINA 850 MG, INSULINA GLARGINA, ENALAPRIL 20 MG', profesion: 'Empleado/a' },
     visitas: [{ hace: 60, prof: L, prest: 'REVISIÓN', data: {
       mot: 'Control anual de diabetes. Refiere visión algo borrosa con OD.',
@@ -154,7 +143,7 @@ export const CASES = [
       dx_ind: 'Buen control de glucosa, tensión arterial y colesterol.', dx_p_ang: true, dx_rev: '1 mes' } }],
     proxima: { en: 2, prest: 'REVISIÓN', medico: 'DRA. SANZ', nota: 'Dilatar' } },
 
-  { hc: '700119', nombre: 'Toledo Cano, Ernesto', nacimiento: '1958-05-30', sociedad: 'MAPFRE ESPAÑA, CIA.',
+  { hc: '700119', caso: 'ovr', nombre: 'Toledo Cano, Ernesto', nacimiento: '1958-05-30', sociedad: 'MAPFRE ESPAÑA, CIA.',
     antecedentes: { ap: 'HTA, FUMADOR 20 CIG/DÍA', hta: true, medsis: 'LOSARTÁN 50 MG, ÁCIDO ACETILSALICÍLICO 100 MG' },
     visitas: [{ hace: 25, prof: L, prest: 'CONSULTA URGENCIAS', data: {
       mot: 'Pérdida de visión brusca e indolora en OI hace una semana.',
@@ -171,7 +160,7 @@ export const CASES = [
       dx_ind: 'Control de la tensión arterial por su médico de cabecera. Dejar de fumar.', dx_rev: '1 mes' } }],
     proxima: { en: 6, prest: 'REVISIÓN', medico: 'DRA. SANZ' } },
 
-  { hc: '700120', nombre: 'Urrutia Pons, Gloria', nacimiento: '1952-01-19', sociedad: 'ASISA, S.A.',
+  { hc: '700120', caso: 'mer', nombre: 'Urrutia Pons, Gloria', nacimiento: '1952-01-19', sociedad: 'ASISA, S.A.',
     antecedentes: { aqx: 'FACOEMULSIFICACIÓN + LIO AO (2020)', alNoC: true, profesion: 'Jubilado/a' },
     visitas: [{ hace: 45, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Ve las líneas torcidas con OD desde hace meses. Le cuesta leer.',
@@ -184,7 +173,7 @@ export const CASES = [
       dx_qx: 'Vitrectomía', dx_ind: 'Rejilla de Amsler. Se explica la cirugía (vitrectomía + pelado de membrana).', dx_rev: '1 mes' } }],
     proxima: { en: 8, prest: 'NOTA MÉDICA', medico: 'DR. MOLINA', nota: 'Consentimiento vitrectomía' } },
 
-  { hc: '700121', nombre: 'Vega Lozano, Alberto', nacimiento: '1981-11-11', sociedad: 'SANITAS, S.A.',
+  { hc: '700121', caso: 'dvp', nombre: 'Vega Lozano, Alberto', nacimiento: '1981-11-11', sociedad: 'SANITAS, S.A.',
     antecedentes: { aof: 'MIOPÍA MAGNA AO (-9 D)', aqx: 'VITRECTOMÍA + GAS OI (DR)', profesion: 'Empleado/a' },
     visitas: [
       { hace: 20, prof: M, prest: 'CONSULTA URGENCIAS', data: {
@@ -210,7 +199,7 @@ export const CASES = [
     ],
     proxima: { en: 4, prest: 'REVISIÓN POSTOPERATORIA', medico: 'DR. MOLINA', nota: 'Control PIO' } },
 
-  { hc: '700132', nombre: 'Jurado Peña, Marcos', nacimiento: '1988-10-30', sociedad: 'PRIVADO',
+  { hc: '700132', caso: 'csc', nombre: 'Jurado Peña, Marcos', nacimiento: '1988-10-30', sociedad: 'PRIVADO',
     antecedentes: { ap: 'ASMA', medsis: 'BUDESONIDA INHALADA', profesion: 'Empleado/a' },
     visitas: [{ hace: 28, prof: L, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Mancha oscura central en OD y ve los objetos más pequeños. Época de mucho estrés laboral.',
@@ -224,7 +213,7 @@ export const CASES = [
     proxima: { en: 2, prest: 'REVISIÓN', medico: 'DRA. SANZ', nota: 'OCT antes de consulta' } },
 
   // --- GLAUCOMA ---
-  { hc: '700123', nombre: 'Aguilar Méndez, Rosa', nacimiento: '1946-10-02', sociedad: 'SEGUR CAIXA ADESLAS',
+  { hc: '700123', caso: 'cierre_angular', nombre: 'Aguilar Méndez, Rosa', nacimiento: '1946-10-02', sociedad: 'SEGUR CAIXA ADESLAS',
     antecedentes: { aof: 'CIERRE ANGULAR AGUDO OD', aqx: 'IRIDOTOMÍA LÁSER AO', ap: 'HIPOTIROIDISMO', medsis: 'LEVOTIROXINA 75 MCG', profesion: 'Jubilado/a' },
     visitas: [
       { hace: 40, prof: L, prest: 'CONSULTA URGENCIAS', data: {
@@ -245,7 +234,7 @@ export const CASES = [
     ],
     proxima: { en: 12, prest: 'REVISIÓN', medico: 'DRA. SANZ' } },
 
-  { hc: '700134', nombre: 'Montero Cuesta, Rafael', nacimiento: '1957-06-17', sociedad: 'MAPFRE ESPAÑA, CIA.',
+  { hc: '700134', caso: 'hto', nombre: 'Montero Cuesta, Rafael', nacimiento: '1957-06-17', sociedad: 'MAPFRE ESPAÑA, CIA.',
     antecedentes: { afam: 'MADRE CON GLAUCOMA', alNoC: true },
     visitas: [{ hace: 180, prof: L, prest: 'REVISIÓN', data: {
       ten_ton: 'Goldmann', ten1_od: '25', ten1_oi: '24', paq_od: '610', paq_oi: '605',
@@ -258,7 +247,7 @@ export const CASES = [
       dx_tto: 'Observación, sin tratamiento', dx_ind: 'La córnea gruesa sobrestima la PIO medida.', dx_rev: '6 meses' } }],
     proxima: { en: 0, prest: 'REVISIÓN', medico: 'OPTOMETRÍA', nota: 'PIO + campimetría' } },
 
-  { hc: '700136', nombre: 'Olivares Ruiz, Esteban', nacimiento: '1944-04-04', sociedad: 'PRIVADO',
+  { hc: '700136', caso: 'glaucoma_pex', nombre: 'Olivares Ruiz, Esteban', nacimiento: '1944-04-04', sociedad: 'PRIVADO',
     antecedentes: { aof: 'GLAUCOMA PSEUDOEXFOLIATIVO AO', aqx: 'TRABECULECTOMÍA OI (2022)', ap: 'EPOC', alergias: 'CONTRASTES YODADOS',
       med: 'LATANOPROST 0,005 % NOCHE AO; DORZOLAMIDA/TIMOLOL C/12H OD', medsis: 'TIOTROPIO INHALADO', profesion: 'Jubilado/a' },
     visitas: [{ hace: 95, prof: L, prest: 'REVISIÓN', data: {
@@ -275,7 +264,7 @@ export const CASES = [
     proxima: { en: 1, prest: 'REVISIÓN', medico: 'DRA. SANZ', nota: 'Curva tensional' } },
 
   // --- CÓRNEA Y SUPERFICIE ---
-  { hc: '700116', nombre: 'Quintero Salas, Beatriz', nacimiento: '1966-12-01', sociedad: 'PRIVADO',
+  { hc: '700116', caso: 'ojo_seco', nombre: 'Quintero Salas, Beatriz', nacimiento: '1966-12-01', sociedad: 'PRIVADO',
     antecedentes: { ap: 'SÍNDROME DE SJÖGREN', medsis: 'HIDROXICLOROQUINA 200 MG', profesion: 'Autónomo/a', alNoC: true },
     visitas: [{ hace: 60, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Sensación de arenilla y quemazón en ambos ojos, peor al final del día y con pantallas.',
@@ -289,7 +278,7 @@ export const CASES = [
       dx_p_oct: true, dx_p_camp: true, dx_rev: '3 meses' } }],
     proxima: { en: 4, prest: 'REVISIÓN', medico: 'DR. MOLINA', nota: 'OCT + campo 10-2' } },
 
-  { hc: '700117', nombre: 'Ramos Vidal, Héctor', nacimiento: '1990-04-17', sociedad: 'SANITAS, S.A.',
+  { hc: '700117', caso: 'queratocono', nombre: 'Ramos Vidal, Héctor', nacimiento: '1990-04-17', sociedad: 'SANITAS, S.A.',
     antecedentes: { aof: 'QUERATOCONO AO', aqx: 'CROSSLINKING CORNEAL OD (2024)', ap: 'DERMATITIS ATÓPICA', alergias: 'ÁCAROS DEL POLVO', profesion: 'Empleado/a' },
     visitas: [{ hace: 150, prof: O, prest: 'REVISIÓN', data: {
       ...rx('man', ['-2.00', '-3.25', '15', '0.8'], ['-3.00', '-4.50', '160', '0.5']),
@@ -302,7 +291,7 @@ export const CASES = [
       dx_ind: 'No frotarse los ojos (empeora el queratocono).', dx_rev: '3 meses' } }],
     proxima: { en: 1, prest: 'REVISIÓN', medico: 'OPTOMETRÍA', nota: 'Topografía' } },
 
-  { hc: '700118', nombre: 'Sáez Moreno, Lorena', nacimiento: '1995-09-03', sociedad: 'PRIVADO',
+  { hc: '700118', caso: 'queratitis_lc', nombre: 'Sáez Moreno, Lorena', nacimiento: '1995-09-03', sociedad: 'PRIVADO',
     antecedentes: { aof: 'PORTADORA DE LENTES DE CONTACTO BLANDAS MENSUALES', profesion: 'Empleado/a', alNoC: true },
     visitas: [{ haceLab: 2, prof: L, prest: 'CONSULTA URGENCIAS', urgente: true, data: {
       mot: 'Dolor, fotofobia y ojo rojo en OD desde hace 2 días. Reconoce dormir con las lentillas.',
@@ -316,7 +305,7 @@ export const CASES = [
       dx_ind: 'Suspender las lentes de contacto. Tirar el estuche. Acudir si empeora.', dx_rev: '1 semana' } }],
     proxima: { en: 2, prest: 'REVISIÓN', medico: 'DRA. SANZ', nota: 'Control úlcera' } },
 
-  { hc: '700124', nombre: 'Bravo Soto, Iván', nacimiento: '2001-08-25', sociedad: 'PRIVADO',
+  { hc: '700124', caso: 'conj_viral', nombre: 'Bravo Soto, Iván', nacimiento: '2001-08-25', sociedad: 'PRIVADO',
     antecedentes: { profesion: 'Estudiante', alNoC: true },
     visitas: [{ haceLab: 1, prof: L, prest: 'CONSULTA URGENCIAS', data: {
       mot: 'Ojo rojo OD desde hace 3 días, ahora también OI. Lagrimeo y sensación de arenilla. Su pareja tuvo lo mismo.',
@@ -328,7 +317,7 @@ export const CASES = [
       dx_ind: 'Muy contagiosa: lavado de manos frecuente, toalla propia. No acudir a clase durante 1 semana.', dx_rev: '1 semana' } }],
     proxima: { en: 4, prest: 'REVISIÓN', medico: 'DRA. SANZ' } },
 
-  { hc: '700130', nombre: 'Hidalgo Ruano, Pedro', nacimiento: '1971-08-08', sociedad: 'SEGUR CAIXA ADESLAS',
+  { hc: '700130', caso: 'pterigion', nombre: 'Hidalgo Ruano, Pedro', nacimiento: '1971-08-08', sociedad: 'SEGUR CAIXA ADESLAS',
     antecedentes: { profesion: 'Autónomo/a', ap: 'TRABAJA AL AIRE LIBRE (AGRICULTOR)' },
     visitas: [{ hace: 55, prof: L, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Carnosidad en el lado nasal del OD que crece; se enrojece con el sol y el viento.',
@@ -341,7 +330,7 @@ export const CASES = [
       dx_ind: 'Si progresa hacia el eje visual: exéresis con autoinjerto conjuntival.', dx_rev: '6 meses' } }],
     proxima: { en: 13, prest: 'REVISIÓN', medico: 'DRA. SANZ' } },
 
-  { hc: '700131', nombre: 'Ibarra Nieto, Graciela', nacimiento: '1955-02-02', sociedad: 'ASISA, S.A.',
+  { hc: '700131', caso: 'fuchs', nombre: 'Ibarra Nieto, Graciela', nacimiento: '1955-02-02', sociedad: 'ASISA, S.A.',
     antecedentes: { profesion: 'Jubilado/a', alNoC: true },
     visitas: [{ hace: 65, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Visión borrosa por las mañanas que mejora a lo largo del día. Deslumbramiento.',
@@ -358,7 +347,7 @@ export const CASES = [
     proxima: { en: 3, prest: 'PREVIO CATARATA', medico: 'DR. MOLINA', nota: 'Carpeta ok' } },
 
   // --- INFLAMACIÓN / NEURO-OFTALMOLOGÍA / ÓRBITA ---
-  { hc: '700125', nombre: 'Cabrera Luna, Pilar', nacimiento: '1974-02-28', sociedad: 'SANITAS, S.A.',
+  { hc: '700125', caso: 'uveitis', nombre: 'Cabrera Luna, Pilar', nacimiento: '1974-02-28', sociedad: 'SANITAS, S.A.',
     antecedentes: { ap: 'ESPONDILITIS ANQUILOSANTE (HLA-B27 POSITIVO)', medsis: 'ADALIMUMAB 40 MG CADA 2 SEMANAS', aof: 'UVEÍTIS ANTERIOR OI (2 EPISODIOS)', profesion: 'Empleado/a' },
     visitas: [
       { hace: 14, prof: L, prest: 'CONSULTA URGENCIAS', data: {
@@ -377,7 +366,7 @@ export const CASES = [
     ],
     proxima: { en: 6, prest: 'REVISIÓN', medico: 'DRA. SANZ' } },
 
-  { hc: '700126', nombre: 'Domínguez Rey, Joaquín', nacimiento: '1983-03-03', sociedad: 'DKV SEGUROS, S.A.',
+  { hc: '700126', caso: 'neuritis', nombre: 'Domínguez Rey, Joaquín', nacimiento: '1983-03-03', sociedad: 'DKV SEGUROS, S.A.',
     antecedentes: { ap: 'ESCLEROSIS MÚLTIPLE (DIAGNÓSTICO 2026)', profesion: 'Empleado/a', alNoC: true },
     visitas: [
       { hace: 50, prof: M, prest: 'CONSULTA URGENCIAS', data: {
@@ -395,7 +384,7 @@ export const CASES = [
     ],
     proxima: { en: 14, prest: 'REVISIÓN', medico: 'DR. MOLINA', nota: 'Campimetría + OCT' } },
 
-  { hc: '700127', nombre: 'Esteban Vázquez, Mercedes', nacimiento: '1964-09-09', sociedad: 'MAPFRE ESPAÑA, CIA.',
+  { hc: '700127', caso: 'orbitopatia', nombre: 'Esteban Vázquez, Mercedes', nacimiento: '1964-09-09', sociedad: 'MAPFRE ESPAÑA, CIA.',
     antecedentes: { ap: 'ENFERMEDAD DE GRAVES (HIPERTIROIDISMO). FUMADORA.', medsis: 'TIAMAZOL 5 MG', profesion: 'Empleado/a' },
     visitas: [{ hace: 75, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Ojos "saltones", sensación de ojo seco y visión doble al mirar hacia arriba.',
@@ -408,7 +397,7 @@ export const CASES = [
     proxima: { en: 11, prest: 'REVISIÓN', medico: 'DR. MOLINA' } },
 
   // --- PÁRPADOS / OCULOPLASTIA / ESTÉTICA ---
-  { hc: '700128', nombre: 'Fernández Arias, Julián', nacimiento: '1949-12-14', sociedad: 'PRIVADO',
+  { hc: '700128', caso: 'ptosis', nombre: 'Fernández Arias, Julián', nacimiento: '1949-12-14', sociedad: 'PRIVADO',
     antecedentes: { ap: 'FIBRILACIÓN AURICULAR', anticoag: true, medsis: 'APIXABÁN 5 MG', profesion: 'Jubilado/a', alNoC: true },
     visitas: [{ hace: 30, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Los párpados le tapan la visión, sobre todo al final del día y al leer.',
@@ -418,7 +407,7 @@ export const CASES = [
       dx_dx: 'Ptosis aponeurótica AO. Dermatocalasia.', dx_cie: 'H02.4', dx_ojo: 'AO', dx_qx: 'Blefaroplastia', dx_rev: '1 mes' } }],
     proxima: { en: 5, prest: 'NOTA MÉDICA', medico: 'DR. MOLINA', nota: 'Preoperatorio' } },
 
-  { hc: '700129', nombre: 'Gómez Pastor, Alicia', nacimiento: '1998-04-21', sociedad: 'SANITAS, S.A.',
+  { hc: '700129', caso: 'chalazion', nombre: 'Gómez Pastor, Alicia', nacimiento: '1998-04-21', sociedad: 'SANITAS, S.A.',
     antecedentes: { profesion: 'Estudiante', alNoC: true },
     visitas: [{ haceLab: 3, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Bulto en el párpado superior del OD desde hace 3 semanas, no doloroso.',
@@ -429,7 +418,7 @@ export const CASES = [
       dx_tto: 'Calor local y masaje palpebral; higiene palpebral', dx_pauta: 'Calor + masaje 10 minutos, 3 veces al día', dx_rev: '1 mes' } }],
     proxima: { en: 7, prest: 'REVISIÓN', medico: 'DR. MOLINA', nota: 'Extirpación chalazión' } },
 
-  { hc: '700133', nombre: 'Luque Sanz, Victoria', nacimiento: '1980-01-25', sociedad: 'SANITAS, S.A.',
+  { hc: '700133', caso: 'estetica', nombre: 'Luque Sanz, Victoria', nacimiento: '1980-01-25', sociedad: 'SANITAS, S.A.',
     antecedentes: { profesion: 'Autónomo/a', alNoC: true },
     visitas: [{ hace: 100, prof: M, prest: 'PRIMERA CONSULTA', data: {
       mot: 'Consulta estética por arrugas alrededor de los ojos.',
@@ -438,7 +427,7 @@ export const CASES = [
     proxima: { en: 4, prest: 'REVISIÓN', medico: 'DR. MOLINA', nota: 'Sesión toxina' } },
 
   // --- REFRACCIÓN / INFANTIL ---
-  { hc: '700115', nombre: 'Pardo Ruiz, Sofía', nacimiento: '2019-02-14', sociedad: 'DKV SEGUROS, S.A.',
+  { hc: '700115', caso: 'ambliopia', nombre: 'Pardo Ruiz, Sofía', nacimiento: '2019-02-14', sociedad: 'DKV SEGUROS, S.A.',
     antecedentes: { afam: 'PADRE CON ESTRABISMO EN LA INFANCIA', profesion: 'Estudiante', alNoC: true },
     visitas: [
       { hace: 120, prof: L, prest: 'PRIMERA CONSULTA', data: {
@@ -457,7 +446,7 @@ export const CASES = [
         dx_tto: 'Mantener gafa. Oclusión OD 2 horas al día.', dx_rev: '3 meses' } },
     ] },
 
-  { hc: '700135', nombre: 'Nieto Paredes, Andrea', nacimiento: '2012-11-05', sociedad: 'DKV SEGUROS, S.A.',
+  { hc: '700135', caso: 'miopia_infantil', nombre: 'Nieto Paredes, Andrea', nacimiento: '2012-11-05', sociedad: 'DKV SEGUROS, S.A.',
     antecedentes: { afam: 'PADRE Y MADRE MIOPES', profesion: 'Estudiante', alNoC: true },
     visitas: [
       { hace: 200, prof: O, prest: 'REVISIÓN', data: {
@@ -474,7 +463,7 @@ export const CASES = [
         dx_tto: 'Mantener atropina 0,01 %. Nueva graduación.', dx_rev: '6 meses' } },
     ] },
 
-  { hc: '700122', nombre: 'Zamora Ibáñez, Clara', nacimiento: '1993-06-06', sociedad: 'PRIVADO',
+  { hc: '700122', caso: 'previo_refractiva', nombre: 'Zamora Ibáñez, Clara', nacimiento: '1993-06-06', sociedad: 'PRIVADO',
     antecedentes: { profesion: 'Empleado/a', alNoC: true, aof: 'MIOPÍA. PORTADORA DE LENTES DE CONTACTO' },
     visitas: [{ haceLab: 1, prof: O, prest: 'PREVIO REFRACTIVA', data: {
       mot: 'Quiere dejar las gafas y las lentillas.',
